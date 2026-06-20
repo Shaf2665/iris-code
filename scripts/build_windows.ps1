@@ -1,5 +1,7 @@
 # Build IrisCode.exe on Windows and (if Inno Setup is present) an installer.
-# Run from the repo root:  powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+# Run from the repo root:  pwsh -File scripts\build_windows.ps1
+# NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads no-BOM scripts as
+# ANSI, so non-ASCII bytes (e.g. an em-dash) corrupt string parsing.
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
@@ -10,7 +12,7 @@ if (Test-Path build) { Remove-Item -Recurse -Force build }
 if (Test-Path dist)  { Remove-Item -Recurse -Force dist }
 pyinstaller packaging\iris_code.spec
 
-# Smoke test the built exe (offscreen — no window needed).
+# Smoke test the built exe (offscreen - no window needed).
 $env:QT_QPA_PLATFORM = "offscreen"
 & .\dist\IrisCode.exe --selftest
 Remove-Item Env:\QT_QPA_PLATFORM
@@ -24,6 +26,6 @@ if ($iscc) {
     & $iscc.Source packaging\IrisCodeSetup.iss
     Write-Host "Built installer via Inno Setup."
 } else {
-    Write-Host "Inno Setup (iscc) not found — shipped the standalone .exe only."
+    Write-Host "Inno Setup (iscc) not found - shipped the standalone .exe only."
 }
 Write-Host "Built: artifacts\IrisCode-windows-x86_64.exe"

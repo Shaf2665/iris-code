@@ -1,4 +1,4 @@
-; Inno Setup script — wraps the PyInstaller onefile exe in a Windows installer.
+; Inno Setup script - wraps the PyInstaller onefile exe in a Windows installer.
 ; Build with:  iscc packaging\IrisCodeSetup.iss   (after pyinstaller has produced dist\IrisCode.exe)
 
 #define AppName "Iris Code"

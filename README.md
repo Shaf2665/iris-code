@@ -114,6 +114,33 @@ git tag v0.1.0 && git push origin v0.1.0
 The bundle is fully self-contained (Python + Qt included, ~95 MB on Linux); end users
 just need a running hermes-router to point it at.
 
+### Running the installers (unsigned app)
+
+The released binaries are **not code-signed** (signing needs a paid certificate), so the
+OS will warn — or, on some Windows 11 machines, block — the first launch:
+
+- **Windows SmartScreen** ("Windows protected your PC") → click **More info → Run anyway**.
+- **Windows Smart App Control** (`CreateProcess failed; code 4551 — An Application Control
+  policy has blocked this file`) is stricter and has **no "Run anyway"**. If you hit this,
+  either run from source (below) or, if you control the machine, turn off Smart App Control
+  (Windows Security → App & browser control → Smart App Control). Note: SAC can only be
+  turned **off**, not back on, without reinstalling Windows.
+- **macOS Gatekeeper** ("unidentified developer") → right-click the app → **Open**, or
+  System Settings → Privacy & Security → **Open Anyway**.
+
+**Most reliable path on a locked-down machine — run from source** (the OS trusts the
+signed `python.exe`, so nothing is blocked):
+
+```bash
+# Windows (PowerShell), after installing Python 3.11+ from python.org:
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-gui.txt
+python iris_code_gui.py
+```
+
+The proper fix for distribution is Authenticode/Apple code signing in CI; see the
+roadmap. Until then, source is the dependable route on machines with Smart App Control.
+
 ## hermes-router
 
 An OpenAI-API-compatible local router that auto-selects among free providers (Gemini,

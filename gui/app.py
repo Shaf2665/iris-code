@@ -21,7 +21,14 @@ from forge.config import Config
 from forge.agent import Agent, detect_stack
 from forge.memory.conversations import ConversationStore
 
-from .style import STYLESHEET, OK, ERR, TEXT_DIM, ACCENT
+from .style import STYLESHEET, OK, ERR, TEXT_DIM, ACCENT, BORDER
+
+
+def _vsep() -> QFrame:
+    f = QFrame()
+    f.setFrameShape(QFrame.VLine)
+    f.setStyleSheet(f"color:{BORDER}; max-width:1px;")
+    return f
 from .chat_view import ChatView
 from .file_tree import FileTree, FilePreviewDialog
 from .worker import ChatWorker, IndexWorker, HealthWorker
@@ -119,13 +126,18 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(8)
 
-        title = QLabel(f'<span style="color:{ACCENT};font-weight:800">✦ Iris Code</span>')
+        # ── Left group: brand · project · project actions ──
+        title = QLabel(f'<span style="color:{ACCENT};font-weight:800">✦ Iris&nbsp;Code</span>')
         lay.addWidget(title)
+        lay.addSpacing(4)
+        lay.addWidget(_vsep())
+        lay.addSpacing(4)
 
-        lay.addSpacing(6)
         lay.addWidget(QLabel("Project:", objectName="ProjectLabel"))
         self._project_value = QLabel("none", objectName="ProjectValue")
+        self._project_value.setMaximumWidth(280)
         lay.addWidget(self._project_value)
+        lay.addSpacing(6)
 
         open_btn = QPushButton("Open…")
         open_btn.setToolTip("Choose the active project directory")
@@ -145,16 +157,22 @@ class MainWindow(QMainWindow):
 
         lay.addStretch(1)
 
+        # ── Right group: session · router · status · settings ──
+        lay.addWidget(QLabel("Session:", objectName="ProjectLabel"))
         self._session_combo = QComboBox()
-        self._session_combo.setMinimumWidth(150)
+        self._session_combo.setMinimumWidth(140)
         self._session_combo.activated.connect(self._on_session_selected)
         lay.addWidget(self._session_combo)
 
         new_btn = QPushButton("＋")
         new_btn.setToolTip("New session")
-        new_btn.setFixedWidth(36)
+        new_btn.setFixedWidth(34)
         new_btn.clicked.connect(self._on_new_session)
         lay.addWidget(new_btn)
+
+        lay.addSpacing(4)
+        lay.addWidget(_vsep())
+        lay.addSpacing(4)
 
         router_btn = QPushButton("Router")
         router_btn.setToolTip("Manage the hermes-router (status, logs, config, start/stop)")
@@ -170,8 +188,9 @@ class MainWindow(QMainWindow):
         self._status_text.setToolTip("hermes-router connection")
         lay.addWidget(self._status_text)
 
+        lay.addSpacing(4)
         settings_btn = QPushButton("⚙")
-        settings_btn.setFixedWidth(36)
+        settings_btn.setFixedWidth(34)
         settings_btn.setToolTip("Settings")
         settings_btn.clicked.connect(self._on_settings)
         lay.addWidget(settings_btn)

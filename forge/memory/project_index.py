@@ -42,6 +42,15 @@ _SKIP_EXTENSIONS = {
 }
 
 
+def _norm_key(project_dir: str) -> str:
+    """Stable storage key for a project directory. os.path.normcase folds Windows
+    path casing and separators (so 'D:\\Foo' and 'd:/foo' collide); on POSIX it's
+    a no-op. This guarantees index(), search() and stats() agree on the key no
+    matter how the path was entered, which was causing 'not indexed' after a
+    successful index on Windows."""
+    return os.path.normcase(str(Path(project_dir).resolve()))
+
+
 def _should_index(path: Path) -> bool:
     if path.suffix.lower() in _SKIP_EXTENSIONS:
         return False
@@ -106,7 +115,7 @@ class ProjectIndex:
         """Walk + chunk + embed the project. Returns the number of chunks embedded
         in this run (0 if everything was already up to date)."""
         root = Path(project_dir).resolve()
-        key = str(root)
+        key = _norm_key(project_dir)
         report = on_progress or (lambda _m: None)
 
         if force:
@@ -170,7 +179,7 @@ class ProjectIndex:
 
     def search(self, query: str, project_dir: str, k: int = 5) -> list[dict]:
         """Semantic search. Returns [{file_path, chunk_index, content, score}]."""
-        key = str(Path(project_dir).resolve())
+        key = _norm_key(project_dir)
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, file_path, chunk_index, content, embedding "
@@ -203,13 +212,13 @@ class ProjectIndex:
     # ── maintenance ────────────────────────────────────────────────────
 
     def clear(self, project_dir: str) -> None:
-        key = str(Path(project_dir).resolve())
+        key = _norm_key(project_dir)
         with self._lock:
             self._conn.execute("DELETE FROM project_chunks WHERE project_dir = ?", (key,))
             self._conn.commit()
 
     def stats(self, project_dir: str) -> dict:
-        key = str(Path(project_dir).resolve())
+        key = _norm_key(project_dir)
         with self._lock:
             row = self._conn.execute(
                 "SELECT COUNT(DISTINCT file_path), COUNT(*), MAX(indexed_at) "

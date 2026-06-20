@@ -22,7 +22,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
     QLabel, QPushButton, QPlainTextEdit, QLineEdit, QSpinBox, QFileDialog,
-    QScrollArea, QCheckBox, QFrame,
+    QScrollArea, QCheckBox, QFrame, QComboBox,
 )
 
 from forge.config import Config
@@ -263,6 +263,23 @@ class RouterDialog(QDialog):
         top.addWidget(self._show_keys)
         lay.addLayout(top)
 
+        # Quick add: pick a provider, paste a key, Add — repeat to stack keys.
+        quick = QHBoxLayout()
+        quick.addWidget(QLabel("Add key:"))
+        self._quick_combo = QComboBox()
+        for p in PROVIDERS:
+            self._quick_combo.addItem(p["label"], p["id"])
+        quick.addWidget(self._quick_combo)
+        self._quick_key = QLineEdit()
+        self._quick_key.setEchoMode(QLineEdit.Password)
+        self._quick_key.setPlaceholderText("paste an API key, then Add (repeat to add more)")
+        self._quick_key.returnPressed.connect(self._quick_add)
+        quick.addWidget(self._quick_key, 1)
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(self._quick_add)
+        quick.addWidget(add_btn)
+        lay.addLayout(quick)
+
         hint = QLabel("Enter one or more keys per provider (comma-separated). Empty disables a provider. "
                       "Save writes the router's .env; Start/Restart it from the Status tab to apply.")
         hint.setWordWrap(True)
@@ -319,6 +336,21 @@ class RouterDialog(QDialog):
         btns.addWidget(save_restart)
         lay.addLayout(btns)
         return w
+
+    def _quick_add(self) -> None:
+        pid = self._quick_combo.currentData()
+        key = self._quick_key.text().strip()
+        row = self._rows.get(pid)
+        if not key or not row:
+            return
+        existing = [k.strip() for k in row["keys"].text().split(",") if k.strip()]
+        if key not in existing:
+            existing.append(key)
+        row["keys"].setText(",".join(existing))
+        self._quick_key.clear()
+        label = self._quick_combo.currentText()
+        self._prov_msg.setText(f"Added a key to {label} ({len(existing)} total). Click Save to write .env.")
+        self._prov_msg.setStyleSheet(f"color:{OK}; {_MONO}")
 
     def _toggle_key_echo(self, show: bool) -> None:
         mode = QLineEdit.Normal if show else QLineEdit.Password

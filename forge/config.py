@@ -66,8 +66,12 @@ class Config:
         "shell commands, inspect git state, and search an indexed codebase. "
         "You remember the developer's preferences and project context across "
         "sessions. Be direct and technical — favour concrete commands, diffs, "
-        "and code over prose. When you need to inspect or change the project, "
-        "use your tools rather than guessing."
+        "and code over prose. "
+        "When a question is about the active project, ALWAYS use your tools to find "
+        "the answer (search_codebase when indexed, otherwise read_file and run_command "
+        "such as `git ls-files`/`ls`) before responding — do not say you lack "
+        "information without looking. Never tell the user to run a slash command or "
+        "to index the project; you have the tools, so use them yourself."
     )
 
     @property
@@ -125,6 +129,8 @@ class Config:
                 cfg.project_dir = data["project_dir"]
             if isinstance(data.get("shell_timeout"), int):
                 cfg.shell_timeout = data["shell_timeout"]
+            if isinstance(data.get("max_history_messages"), int) and data["max_history_messages"] > 0:
+                cfg.max_history_messages = data["max_history_messages"]
             if isinstance(data.get("router_container"), str) and data["router_container"].strip():
                 cfg.router_container = data["router_container"]
             if isinstance(data.get("router_config_path"), str):
@@ -146,6 +152,7 @@ class Config:
             "base_url_override": self.base_url_override,
             "project_dir": self.project_dir,
             "shell_timeout": self.shell_timeout,
+            "max_history_messages": self.max_history_messages,
             "router_container": self.router_container,
             "router_config_path": self.router_config_path,
             "router_dir": self.router_dir,

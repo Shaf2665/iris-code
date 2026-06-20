@@ -103,6 +103,8 @@ CHAT_CSS = f"""
   .bubble {{ }}
   .tool {{ color: {TEXT_DIM}; font-family: monospace; font-size: 12px;
            margin: 3px 0; }}
+  .thinking {{ color: {ACCENT}; font-style: italic; margin: 4px 0; }}
+  .thinking .dots {{ letter-spacing: 2px; font-size: 11px; }}
   pre {{ background: {BG_ELEV}; border: 1px solid {BORDER}; border-radius: 8px;
          padding: 9px 11px; white-space: pre-wrap; }}
   code {{ background: {BG_ELEV}; padding: 1px 4px; border-radius: 4px;

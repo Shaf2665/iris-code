@@ -127,11 +127,16 @@ class Agent:
             if stats["chunk_count"]:
                 line += (
                     f"\nCodebase indexed: {stats['file_count']} files, "
-                    f"{stats['chunk_count']} chunks — use search_codebase() to find code "
+                    f"{stats['chunk_count']} chunks — call search_codebase() to find code "
                     "before reading files one by one."
                 )
             else:
-                line += "\nNot indexed yet (the developer can run /index)."
+                line += (
+                    "\nThe codebase isn't indexed for semantic search yet. Answer anyway: "
+                    "use read_file (and run_command like `ls`/`dir` or `git ls-files`) to "
+                    "inspect the project. Never tell the user to run a slash command — you "
+                    "have the tools, so use them."
+                )
             content += line
 
         return {"role": "system", "content": content}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QTextBrowser
 
 from .style import CHAT_CSS, ACCENT, TEXT_DIM, CYAN
@@ -41,12 +42,39 @@ except Exception:  # pragma: no cover - markdown/pygments missing
         return "<p>" + html.escape(text).replace("\n", "<br>") + "</p>"
 
 
+_ACTIONS = {
+    "search_codebase": "Searching the codebase",
+    "read_file": "Reading a file",
+    "write_file": "Writing a file",
+    "run_command": "Running a command",
+    "run_tests": "Running tests",
+    "git_status": "Checking git status",
+    "git_diff": "Reading the git diff",
+    "git_log": "Reading git history",
+    "git_blame_line": "Running git blame",
+    "fetch_url": "Fetching a web page",
+}
+
+
+def _friendly_action(tool_line: str) -> str:
+    """'> run_command(command=...)' -> 'Running a command'."""
+    name = tool_line.lstrip("> ").split("(", 1)[0].strip()
+    return _ACTIONS.get(name, "Working")
+
+
 class ChatView(QTextBrowser):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setOpenExternalLinks(True)
         self._turns: list[dict] = []          # {role, text, tools:[...]}
         self._streaming: dict | None = None    # {text, tools:[...]}
+        # Animated "thinking" indicator shown while waiting for the first token
+        # or while a tool runs (Claude-Code style).
+        self._thinking = ""
+        self._think_phase = 0
+        self._think_timer = QTimer(self)
+        self._think_timer.setInterval(350)
+        self._think_timer.timeout.connect(self._tick)
 
     # ── transcript mutation ────────────────────────────────────────────
 
@@ -69,11 +97,17 @@ class ChatView(QTextBrowser):
 
     def begin_assistant(self) -> None:
         self._streaming = {"text": "", "tools": []}
+        self._thinking = "Forge is thinking"
+        self._think_phase = 0
+        self._think_timer.start()
         self._render()
 
     def append_token(self, chunk: str) -> None:
         if self._streaming is None:
             self.begin_assistant()
+        if chunk.strip() and self._thinking:
+            self._thinking = ""           # real output arrived — drop the indicator
+            self._think_timer.stop()
         self._streaming["text"] += chunk
         self._render()
 
@@ -84,9 +118,16 @@ class ChatView(QTextBrowser):
         clean = line.replace("[dim]", "").replace("[/dim]", "").strip()
         if clean:
             self._streaming["tools"].append(clean)
+            # While a tool runs, show what it's doing as the live indicator.
+            self._thinking = _friendly_action(clean)
+            self._think_phase = 0
+            if not self._think_timer.isActive():
+                self._think_timer.start()
             self._render()
 
     def end_assistant(self) -> None:
+        self._think_timer.stop()
+        self._thinking = ""
         if self._streaming is not None:
             self._turns.append({
                 "role": "forge",
@@ -95,6 +136,13 @@ class ChatView(QTextBrowser):
             })
             self._streaming = None
             self._render()
+
+    def _tick(self) -> None:
+        self._think_phase += 1
+        if self._streaming is not None and self._thinking:
+            self._render()
+        else:
+            self._think_timer.stop()
 
     def add_system_note(self, text: str) -> None:
         self._turns.append({"role": "note", "text": text, "tools": []})
@@ -125,7 +173,19 @@ class ChatView(QTextBrowser):
         for t in self._turns:
             body.append(self._turn_html(t["role"], t["text"], t["tools"]))
         if self._streaming is not None:
-            body.append(self._turn_html("forge", self._streaming["text"], self._streaming["tools"]))
+            parts = ['<div class="role-forge">Forge</div>']
+            for t in self._streaming["tools"]:
+                parts.append('<div class="tool">' + html.escape(t) + "</div>")
+            text = self._streaming["text"]
+            if text.strip():
+                parts.append('<div class="bubble">' + _render_md(text) + "</div>")
+            elif self._thinking:
+                dots = "●" * (self._think_phase % 4) + "○" * (3 - self._think_phase % 4)
+                parts.append(
+                    f'<div class="thinking">{html.escape(self._thinking)} '
+                    f'<span class="dots">{dots}</span></div>'
+                )
+            body.append('<div class="turn">' + "".join(parts) + "</div>")
         self.setHtml("".join(body))
         sb = self.verticalScrollBar()
         sb.setValue(sb.maximum())

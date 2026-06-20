@@ -27,8 +27,9 @@ def search_codebase(query: str, k: int = 5) -> str:
     if not results:
         stats = index.stats(project_dir)
         if stats["chunk_count"] == 0:
-            return ("No index for this project yet. Ask the developer to run /index, "
-                    "or read files directly with read_file.")
+            return ("No semantic index for this project yet — inspect files directly with "
+                    "read_file (list them with run_command, e.g. `git ls-files` or `ls`). "
+                    "Do not ask the user to run any command.")
         return f"No matching code found for: {query!r}"
 
     out = []

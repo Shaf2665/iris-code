@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QComboBox, QLineEdit, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
+    QDialog, QFormLayout, QComboBox, QLineEdit, QLabel, QPushButton, QHBoxLayout,
+    QVBoxLayout, QSpinBox, QFrame,
 )
 
 from forge.config import Config
 from .worker import CallWorker
-from .style import OK, ERR, TEXT_DIM
+from .style import OK, ERR, TEXT_DIM, ACCENT
 
 # label -> (base_url or "" for hermes, default model, endpoint placeholder)
 _PRESETS: list[tuple[str, str, str]] = [
@@ -28,7 +29,7 @@ class SettingsDialog(QDialog):
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Iris Code — Settings")
-        self.setMinimumWidth(480)
+        self.setMinimumSize(540, 460)
         self._config = config
         self._probe: CallWorker | None = None
 
@@ -42,12 +43,33 @@ class SettingsDialog(QDialog):
         self._key.setEchoMode(QLineEdit.Password)
         self._model = QLineEdit()
 
+        self._shell_timeout = QSpinBox()
+        self._shell_timeout.setRange(5, 600)
+        self._shell_timeout.setSuffix(" s")
+        self._shell_timeout.setValue(config.shell_timeout)
+        self._max_history = QSpinBox()
+        self._max_history.setRange(4, 200)
+        self._max_history.setValue(config.max_history_messages)
+
+        conn_hdr = QLabel("Connection")
+        conn_hdr.setStyleSheet(f"color:{ACCENT}; font-weight:700;")
+
         form = QFormLayout()
+        form.setVerticalSpacing(10)
+        form.addRow(conn_hdr)
         form.addRow("Provider", self._provider)
         self._endpoint_label = QLabel("Router URL")
         form.addRow(self._endpoint_label, self._endpoint)
         form.addRow("API key", self._key)
         form.addRow("Model", self._model)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet(f"color:{TEXT_DIM};")
+        form.addRow(sep)
+        beh_hdr = QLabel("Behaviour")
+        beh_hdr.setStyleSheet(f"color:{ACCENT}; font-weight:700;")
+        form.addRow(beh_hdr)
+        form.addRow("Shell timeout", self._shell_timeout)
+        form.addRow("Chat history kept", self._max_history)
 
         self._hint = QLabel("")
         self._hint.setWordWrap(True)
@@ -174,5 +196,7 @@ class SettingsDialog(QDialog):
         config.api_key = new_key
         config.model = new_model
         config.base_url_override = new_override
+        config.shell_timeout = self._shell_timeout.value()
+        config.max_history_messages = self._max_history.value()
         config.save_overrides()
         return changed

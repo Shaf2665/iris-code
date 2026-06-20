@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Signal, QDir, QSortFilterProxyModel, QModelIndex
+from PySide6.QtCore import Signal, QDir, QSortFilterProxyModel, QModelIndex, QFileInfo
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTreeView, QDialog, QTextBrowser,
-    QPushButton, QFileSystemModel,
+    QPushButton, QFileSystemModel, QFileIconProvider, QStyle, QApplication,
 )
 
 from forge.memory.project_index import _SKIP_DIRS
@@ -38,6 +38,21 @@ except Exception:  # pragma: no cover
         return "<pre>" + _html.escape(text) + "</pre>"
 
 
+class _IconProvider(QFileIconProvider):
+    """Always return a real file/folder icon. The OS shell icons that
+    QFileSystemModel uses by default can come back blank in a frozen PyInstaller
+    app (no shell integration), leaving every file iconless — this guarantees a
+    recognizable icon everywhere by falling back to the Qt style icons."""
+
+    def icon(self, arg):  # noqa: N802 (Qt naming) — overloaded: QFileInfo | IconType
+        style = QApplication.style()
+        if isinstance(arg, QFileInfo):
+            sp = QStyle.StandardPixmap.SP_DirIcon if arg.isDir() else QStyle.StandardPixmap.SP_FileIcon
+            base = super().icon(arg)
+            return base if not base.isNull() else style.standardIcon(sp)
+        return super().icon(arg)
+
+
 class _SkipDirProxy(QSortFilterProxyModel):
     """Hides directories whose name is in the project-index skip set."""
 
@@ -59,6 +74,8 @@ class FileTree(QWidget):
         self.setMinimumWidth(180)
 
         self._fs = QFileSystemModel(self)
+        self._icon_provider = _IconProvider()
+        self._fs.setIconProvider(self._icon_provider)
         self._fs.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot | QDir.Hidden)
         self._proxy = _SkipDirProxy(self)
         self._proxy.setSourceModel(self._fs)

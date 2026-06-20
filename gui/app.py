@@ -83,6 +83,9 @@ class MainWindow(QMainWindow):
         self._health_timer.timeout.connect(self._check_health)
         self._health_timer.start(20000)
 
+        # First-run: offer to set up hermes-router if it isn't set up yet.
+        QTimer.singleShot(600, self._maybe_first_run)
+
     # ── UI construction ────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
@@ -354,6 +357,26 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
 
     # ── settings / health ──────────────────────────────────────────────
+
+    def _maybe_first_run(self) -> None:
+        """If the router isn't set up (and the user hasn't dismissed it or picked a
+        custom provider), offer the one-click setup wizard."""
+        if self._config.is_custom_provider or self._config.setup_dismissed:
+            return
+        from forge.router import RouterAdmin
+        admin = RouterAdmin(self._config.router_url, self._config.api_key,
+                            router_dir=self._config.router_dir)
+        if admin.is_set_up():
+            return
+        from .setup_wizard import SetupDialog
+        dlg = SetupDialog(self._config, self)
+        dlg.setup_done.connect(self._on_setup_complete)
+        dlg.exec()
+        self._check_health()
+
+    def _on_setup_complete(self, folder: str) -> None:
+        self._chat.add_system_note(f"hermes-router set up in {folder}.")
+        self._check_health()
 
     def _on_router_panel(self) -> None:
         from .router_panel import RouterDialog

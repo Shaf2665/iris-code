@@ -122,6 +122,16 @@ class RouterDialog(QDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
 
+        drow = QHBoxLayout()
+        drow.addWidget(QLabel("Docker:"))
+        self._docker_lbl = QLabel("checking…")
+        self._docker_lbl.setWordWrap(True)
+        drow.addWidget(self._docker_lbl, 1)
+        setup_btn = QPushButton("Set up hermes-router")
+        setup_btn.clicked.connect(self._open_setup)
+        drow.addWidget(setup_btn)
+        lay.addLayout(drow)
+
         form = QFormLayout()
         self._conn_lbl = QLabel("checking…")
         self._latency_lbl = QLabel("—")
@@ -163,6 +173,32 @@ class RouterDialog(QDialog):
         self._conn_lbl.setStyleSheet(f"color:{TEXT_DIM}")
         self._run(self._admin.health, self._apply_health)
         self._run(self._admin.models, self._apply_models)
+        self._run(RouterAdmin.docker_status, self._apply_docker)
+
+    def _apply_docker(self, status: dict) -> None:
+        running = bool(status.get("running"))
+        self._docker_lbl.setText(status.get("detail", ""))
+        self._docker_lbl.setStyleSheet(f"color:{OK if running else ERR}")
+        # Lifecycle needs Docker — gate the buttons and explain why.
+        for b in (self._start_btn, self._stop_btn, self._restart_btn, self._update_btn):
+            b.setEnabled(running)
+            if not running:
+                b.setToolTip("Start Docker Desktop / the Docker engine first.")
+            else:
+                b.setToolTip("")
+
+    def _open_setup(self) -> None:
+        from .setup_wizard import SetupDialog
+        dlg = SetupDialog(self._config, self)
+        dlg.setup_done.connect(self._on_setup_done)
+        dlg.exec()
+        self.refresh_status()
+
+    def _on_setup_done(self, folder: str) -> None:
+        self._dir_edit.setText(folder)
+        self._sync_dir()
+        self._load_providers()
+        self.router_changed.emit()
 
     def _apply_health(self, h: dict) -> None:
         if h.get("ok"):

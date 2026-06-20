@@ -96,6 +96,20 @@ a syntax-highlighted preview, with a **Send to Forge** button to hand it to the 
 
 ![File explorer](docs/file-explorer.png)
 
+#### One-click setup (no terminal)
+
+On first launch, if hermes-router isn't set up yet, Iris Code offers a **setup wizard**:
+it checks that **Docker is running** (and tells you to start Docker Desktop / the engine if
+not), then **clones** hermes-router, writes a minimal `.env`, **builds the image and starts
+the container** (`docker compose up -d --build`), and waits for it to come online — all from
+the GUI. You can paste one free provider key during setup to start chatting immediately, or
+add keys later in the Router panel.
+
+![Setup wizard](docs/setup-wizard.png)
+
+> Requires [Docker](https://www.docker.com/products/docker-desktop/). Router lifecycle
+> buttons are disabled (with a clear message) whenever Docker isn't running.
+
 #### Router panel
 
 A built-in **Router** panel (top bar → *Router*) is a control center for your

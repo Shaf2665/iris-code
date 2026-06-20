@@ -59,6 +59,7 @@ class Config:
     router_container: str = "hermes-router"  # docker container name for the router
     router_config_path: str = ""             # path to the router's .env/config file
     router_dir: str = ""                     # hermes-router folder (docker-compose.yml + .env)
+    setup_dismissed: bool = False            # user dismissed the first-run setup wizard
     system_prompt: str = (
         "You are Forge, a personal coding assistant. You help with writing, "
         "debugging, and understanding code. You can read and write files, run "
@@ -130,6 +131,8 @@ class Config:
                 cfg.router_config_path = data["router_config_path"]
             if isinstance(data.get("router_dir"), str):
                 cfg.router_dir = data["router_dir"]
+            if isinstance(data.get("setup_dismissed"), bool):
+                cfg.setup_dismissed = data["setup_dismissed"]
         return cfg
 
     def save_overrides(self) -> None:
@@ -146,5 +149,6 @@ class Config:
             "router_container": self.router_container,
             "router_config_path": self.router_config_path,
             "router_dir": self.router_dir,
+            "setup_dismissed": self.setup_dismissed,
         }
         settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")

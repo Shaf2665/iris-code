@@ -23,6 +23,15 @@ import httpx
 _DOCKER_TIMEOUT = 25
 _COMPOSE_TIMEOUT = 600   # builds/pulls can take minutes
 
+# Where the one-click setup clones hermes-router from, and the default folder.
+HERMES_REPO = "https://github.com/Shaf2665/Hermes-router.git"
+
+
+def default_router_dir() -> str:
+    """Default install location for a fresh hermes-router clone (per-user data)."""
+    from .config import user_data_dir
+    return str(user_data_dir() / "hermes-router")
+
 # hermes-router provider registry — id, label, the .env var that holds the
 # comma-separated key(s), the model-override var, and where to get a key. Mirrors
 # router.py's _keys_for() calls so what the GUI writes is what the router reads.
@@ -306,3 +315,73 @@ class RouterAdmin:
         ok, out = self._compose("up", "-d", "--build")
         steps.append("$ docker compose up -d --build\n" + out)
         return ok, "\n\n".join(steps)
+
+    # ── Docker daemon + one-click setup ────────────────────────────────
+
+    @staticmethod
+    def docker_status() -> dict:
+        """{installed, running, detail}. Distinguishes 'docker missing' from
+        'installed but the daemon/Docker Desktop isn't running'."""
+        if not shutil.which("docker"):
+            return {"installed": False, "running": False,
+                    "detail": "Docker is not installed. Install Docker Desktop (Windows/macOS) "
+                              "or Docker Engine (Linux)."}
+        try:
+            p = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
+                               capture_output=True, text=True, timeout=15)
+            if p.returncode == 0 and p.stdout.strip():
+                return {"installed": True, "running": True, "detail": f"Docker {p.stdout.strip()}"}
+            return {"installed": True, "running": False,
+                    "detail": "Docker is installed but not running. Start Docker Desktop "
+                              "(Windows/macOS) or the Docker engine (Linux), then re-check."}
+        except subprocess.TimeoutExpired:
+            return {"installed": True, "running": False,
+                    "detail": "Docker isn't responding (Docker Desktop may still be starting)."}
+        except Exception as e:  # noqa: BLE001
+            return {"installed": True, "running": False, "detail": str(e)[:140]}
+
+    def is_set_up(self) -> bool:
+        """True when router_dir points at a folder that looks like a hermes-router
+        checkout (has docker-compose.yml)."""
+        d = self.router_dir
+        return bool(d) and (Path(d) / "docker-compose.yml").exists()
+
+    def clone_or_update(self, dest: str) -> tuple[bool, str]:
+        """git clone the router into dest (or git pull if it's already there)."""
+        p = Path(dest)
+        try:
+            if (p / ".git").exists():
+                g = subprocess.run(["git", "-C", dest, "pull", "--ff-only"],
+                                   capture_output=True, text=True, timeout=180)
+                return g.returncode == 0, "$ git pull\n" + (g.stdout + g.stderr).strip()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            g = subprocess.run(["git", "clone", HERMES_REPO, dest],
+                               capture_output=True, text=True, timeout=300)
+            return g.returncode == 0, "$ git clone\n" + (g.stdout + g.stderr).strip()
+        except FileNotFoundError:
+            return False, "git is not installed or not on PATH."
+        except subprocess.TimeoutExpired:
+            return False, "git timed out."
+        except Exception as e:  # noqa: BLE001
+            return False, f"git failed: {e}"
+
+    def ensure_env(self, proxy_key: str = "") -> tuple[bool, str]:
+        """Make sure the router has a minimal .env (PORT + the client key Iris Code
+        uses). Provider keys are added separately via write_env_vars / the wizard."""
+        if not self.router_dir:
+            return False, "No folder set."
+        env = self.env_path()
+        try:
+            if not env.exists():
+                env.write_text(
+                    f"PORT=8319\nPROXY_API_KEYS={proxy_key or 'sk-router-hermes-1'}\nLOG_LEVEL=INFO\n",
+                    encoding="utf-8",
+                )
+            elif proxy_key:
+                self.write_env_vars({"PROXY_API_KEYS": proxy_key})
+            return True, f"Configuration ready: {env}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"Could not write {env}: {e}"
+
+    def compose_up_build(self) -> tuple[bool, str]:
+        return self._compose("up", "-d", "--build")

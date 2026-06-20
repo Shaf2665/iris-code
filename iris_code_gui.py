@@ -26,11 +26,21 @@ def _selftest() -> int:
     app.setStyleSheet(STYLESHEET)
     win = MainWindow(Config.load())
     win.show()
+    # Stop the periodic poll so it can't fire mid-teardown, and skip the
+    # first-run wizard during the smoke test.
+    try:
+        win._health_timer.stop()
+    except Exception:
+        pass
+    win._config.setup_dismissed = True
     QTimer.singleShot(300, app.quit)
     app.exec()
-    win.close()
-    print("selftest OK — window built and rendered")
-    return 0
+    # Hard-exit BEFORE Qt's destructors run: the startup HealthWorker QThread may
+    # still be in flight (the router is unreachable in CI), and tearing it down
+    # races on macOS and segfaults (exit 139). The render already proved out.
+    print("selftest OK — window built and rendered", flush=True)
+    sys.stdout.flush()
+    os._exit(0)
 
 
 def main() -> int:

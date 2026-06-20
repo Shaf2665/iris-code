@@ -5,9 +5,13 @@ Run from the repo root on each target OS:
 
     pyinstaller packaging/iris_code.spec
 
-Produces a single windowed executable in dist/:
-  • Linux/Windows: dist/IrisCode  (onefile)
+Produces a windowed **one-folder** build in dist/:
+  • Linux/Windows: dist/IrisCode/  (folder with IrisCode[.exe] + libs)
   • macOS:         dist/IrisCode.app  (bundle, via BUNDLE below)
+
+One-folder (not one-file) starts faster and trips fewer SmartScreen/antivirus
+false positives, since there's no self-extracting bootloader. (It does NOT
+bypass Windows Smart App Control — that still requires code signing.)
 
 markdown and pygments import lexers/styles/extensions dynamically, so we
 collect them wholesale; the PySide6 PyInstaller hook handles Qt plugins.
@@ -57,25 +61,32 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,              # one-folder: libs go in COLLECT, not the exe
     name="IrisCode",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,                      # windowed app (no terminal)
     disable_windowed_traceback=False,
     icon=app_icon,
     target_arch=None,
 )
 
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="IrisCode",
+)
+
 if is_mac:
     app = BUNDLE(
-        exe,
+        coll,
         name="IrisCode.app",
         icon=app_icon,
         bundle_identifier="dev.iriscode.forge",

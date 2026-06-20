@@ -24,7 +24,7 @@ jobs:
           - os: ubuntu-latest
             artifact: IrisCode-linux-x86_64.tar.gz
           - os: windows-latest
-            artifact: IrisCode-windows-x86_64.exe
+            artifact: IrisCode-windows-x86_64.zip
           - os: macos-latest
             artifact: IrisCode-macos.dmg
 

@@ -107,12 +107,13 @@ git tag v0.1.0 && git push origin v0.1.0
 
 | OS | Output | Build locally |
 |---|---|---|
-| Linux | `IrisCode` binary + `.tar.gz` | `bash scripts/build_linux.sh` |
-| Windows | `IrisCode.exe` + Inno Setup installer | `scripts\build_windows.ps1` |
+| Linux | one-folder app + `.tar.gz` | `bash scripts/build_linux.sh` |
+| Windows | portable `.zip` + Inno Setup installer | `scripts\build_windows.ps1` |
 | macOS | `IrisCode.app` + `.dmg` | `bash scripts/build_macos.sh` |
 
-The bundle is fully self-contained (Python + Qt included, ~95 MB on Linux); end users
-just need a running hermes-router to point it at.
+These are **one-folder** builds (a folder with the executable + bundled Python/Qt), which
+start faster and trip fewer SmartScreen/antivirus false positives than a single self-extracting
+exe. The app is self-contained; end users just need a running hermes-router to point it at.
 
 ### Running the installers (unsigned app)
 

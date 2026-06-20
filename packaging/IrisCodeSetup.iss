@@ -27,7 +27,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
-Source: "..\dist\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; One-folder build: install the whole dist\IrisCode\ tree.
+Source: "..\dist\IrisCode\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

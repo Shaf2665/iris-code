@@ -51,6 +51,7 @@ class Config:
     router_url: str = "http://localhost:8319"
     api_key: str = "sk-router-hermes-1"
     model: str = "hermes-router"
+    base_url_override: str = ""   # full OpenAI-compatible base URL for a custom provider
     db_path: str = "forge_memory.db"
     max_history_messages: int = 30
     project_dir: str = ""        # active project directory
@@ -70,8 +71,16 @@ class Config:
 
     @property
     def base_url(self) -> str:
-        """OpenAI-compatible endpoint (router_url + /v1). Used by the LLM client."""
+        """OpenAI-compatible endpoint used by the LLM client. A custom provider
+        sets base_url_override (a full URL, e.g. https://api.openai.com/v1);
+        otherwise it's the local hermes-router (router_url + /v1)."""
+        if self.base_url_override.strip():
+            return self.base_url_override.strip().rstrip("/")
         return self.router_url.rstrip("/") + "/v1"
+
+    @property
+    def is_custom_provider(self) -> bool:
+        return bool(self.base_url_override.strip())
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -82,6 +91,7 @@ class Config:
             router_url=os.getenv("FORGE_ROUTER_URL", "http://localhost:8319"),
             api_key=os.getenv("FORGE_API_KEY", "sk-router-hermes-1"),
             model=os.getenv("FORGE_MODEL", "hermes-router"),
+            base_url_override=os.getenv("FORGE_BASE_URL", ""),
             db_path=db_path,
             project_dir=os.getenv("FORGE_PROJECT_DIR", ""),
             shell_timeout=int(os.getenv("FORGE_SHELL_TIMEOUT", "30") or "30"),
@@ -108,6 +118,8 @@ class Config:
                 cfg.api_key = data["api_key"]
             if isinstance(data.get("model"), str) and data["model"].strip():
                 cfg.model = data["model"]
+            if isinstance(data.get("base_url_override"), str):
+                cfg.base_url_override = data["base_url_override"]
             if isinstance(data.get("project_dir"), str):
                 cfg.project_dir = data["project_dir"]
             if isinstance(data.get("shell_timeout"), int):
@@ -128,6 +140,7 @@ class Config:
             "router_url": self.router_url,
             "api_key": self.api_key,
             "model": self.model,
+            "base_url_override": self.base_url_override,
             "project_dir": self.project_dir,
             "shell_timeout": self.shell_timeout,
             "router_container": self.router_container,

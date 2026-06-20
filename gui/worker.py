@@ -60,21 +60,29 @@ class IndexWorker(QThread):
 
 
 class HealthWorker(QThread):
-    """Pings the router /health endpoint off the UI thread."""
+    """Checks connectivity off the UI thread. For the local hermes-router this
+    pings /health; for a custom OpenAI-compatible provider (no /health) it probes
+    {base_url}/models with the API key instead."""
     result = Signal(bool, str)  # (ok, detail)
 
-    def __init__(self, router_url: str, parent: QObject | None = None):
+    def __init__(self, router_url: str, base_url: str = "", api_key: str = "",
+                 is_custom: bool = False, parent: QObject | None = None):
         super().__init__(parent)
         self._router_url = router_url.rstrip("/")
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._is_custom = is_custom
 
     def run(self) -> None:
         import httpx
         try:
-            r = httpx.get(f"{self._router_url}/health", timeout=5)
-            if r.status_code == 200:
-                self.result.emit(True, "connected")
+            if self._is_custom:
+                r = httpx.get(f"{self._base_url}/models",
+                              headers={"Authorization": f"Bearer {self._api_key}"}, timeout=6)
             else:
-                self.result.emit(False, f"HTTP {r.status_code}")
+                r = httpx.get(f"{self._router_url}/health", timeout=5)
+            self.result.emit(r.status_code == 200,
+                             "connected" if r.status_code == 200 else f"HTTP {r.status_code}")
         except Exception as e:  # noqa: BLE001
             self.result.emit(False, str(e)[:60])
 

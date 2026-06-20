@@ -84,8 +84,11 @@ python -m forge
 
 Iris Code also ships a cross-platform **desktop GUI** (PySide6) for Linux, Windows,
 and macOS — a windowed chat with the same forge backend, a project picker, a one-click
-semantic indexer, a router health indicator, named sessions, and a settings panel for the
-router URL / key / model.
+semantic indexer, a router health indicator, named sessions, and a settings panel.
+
+**Provider** (Settings → *Provider*): defaults to the local **hermes-router**, but you can
+point Iris Code at any **OpenAI-compatible** endpoint — built-in presets for OpenAI and
+OpenRouter, or a **Custom** base URL — each with its own key and model, with a Test button.
 
 #### Router panel
 

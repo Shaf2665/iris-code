@@ -343,7 +343,10 @@ class MainWindow(QMainWindow):
     def _check_health(self) -> None:
         if self._health_worker is not None:
             return
-        self._health_worker = HealthWorker(self._config.router_url)
+        self._health_worker = HealthWorker(
+            self._config.router_url, self._config.base_url,
+            self._config.api_key, self._config.is_custom_provider,
+        )
         self._health_worker.result.connect(self._on_health)
         self._health_worker.start()
 
@@ -353,9 +356,11 @@ class MainWindow(QMainWindow):
         self._status_dot.setToolTip(f"Router: {detail}")
         self._status_text.setText("Connected" if ok else "Offline")
         self._status_text.setStyleSheet(f"color:{color if not ok else TEXT_DIM}; font-size:12px;")
+        endpoint = self._config.base_url if self._config.is_custom_provider else self._config.router_url
         self._status_text.setToolTip(
-            f"hermes-router at {self._config.router_url} — {detail}"
-            + ("" if ok else "\nStart your router, or change the URL in Settings (⚙).")
+            f"{'Custom provider' if self._config.is_custom_provider else 'hermes-router'} "
+            f"at {endpoint} — {detail}"
+            + ("" if ok else "\nStart your router, or change the provider in Settings (⚙).")
         )
         self._health_worker = None
 

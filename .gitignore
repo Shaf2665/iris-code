@@ -10,3 +10,9 @@ forge_memory.db-wal
 *.db
 *.db-shm
 *.db-wal
+
+# PyInstaller / desktop build outputs
+build/
+dist/
+artifacts/
+*.manifest

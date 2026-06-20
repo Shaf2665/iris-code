@@ -1,0 +1,84 @@
+name: Build desktop apps
+
+# Builds the Iris Code desktop GUI into standalone installers for Linux,
+# Windows, and macOS. Runs on every push to main (smoke test) and, when you push
+# a version tag like v0.1.0, attaches the installers to a GitHub Release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create releases on tag
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: IrisCode-linux-x86_64.tar.gz
+          - os: windows-latest
+            artifact: IrisCode-windows-x86_64.exe
+          - os: macos-latest
+            artifact: IrisCode-macos.dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Qt runtime libraries for the headless --selftest on Linux.
+      - name: Install Qt system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 \
+            libglib2.0-0t64 libfontconfig1 libfreetype6 '^libxcb.*' \
+            libxkbcommon-x11-0 || sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/build_linux.sh
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: bash scripts/build_macos.sh
+
+      - name: Install Inno Setup (Windows)
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Attach to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dl/**/*
+          generate_release_notes: true

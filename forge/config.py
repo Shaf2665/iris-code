@@ -59,6 +59,10 @@ class Config:
                 data = {}
             if isinstance(data.get("system_prompt"), str) and data["system_prompt"].strip():
                 cfg.system_prompt = data["system_prompt"]
+            if isinstance(data.get("router_url"), str) and data["router_url"].strip():
+                cfg.router_url = data["router_url"]
+            if isinstance(data.get("api_key"), str) and data["api_key"].strip():
+                cfg.api_key = data["api_key"]
             if isinstance(data.get("model"), str) and data["model"].strip():
                 cfg.model = data["model"]
             if isinstance(data.get("project_dir"), str):
@@ -66,3 +70,16 @@ class Config:
             if isinstance(data.get("shell_timeout"), int):
                 cfg.shell_timeout = data["shell_timeout"]
         return cfg
+
+    def save_overrides(self) -> None:
+        """Persist the GUI-editable fields to forge_settings.json (used by the
+        desktop app's Settings panel). Secrets stay local to this file, which is
+        gitignored alongside .env."""
+        data = {
+            "router_url": self.router_url,
+            "api_key": self.api_key,
+            "model": self.model,
+            "project_dir": self.project_dir,
+            "shell_timeout": self.shell_timeout,
+        }
+        Path(_SETTINGS_FILE).write_text(json.dumps(data, indent=2), encoding="utf-8")

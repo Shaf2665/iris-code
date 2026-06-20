@@ -73,6 +73,40 @@ python -m forge
 /help  /exit
 ```
 
+## Desktop app (GUI)
+
+Iris Code also ships a cross-platform **desktop GUI** (PySide6) for Linux, Windows,
+and macOS — a windowed chat with the same forge backend, a project picker, a one-click
+semantic indexer, a router health indicator, named sessions, and a settings panel for the
+router URL / key / model.
+
+Run it from source:
+
+```bash
+pip install -r requirements.txt -r requirements-gui.txt
+python iris_code_gui.py          # launch the GUI
+python iris_code_gui.py --selftest   # headless build check (no display/router)
+```
+
+### Building standalone installers
+
+Packaging is per-OS (PyInstaller can't cross-compile), so installers are built by a
+**GitHub Actions matrix** ([`.github/workflows/build-desktop.yml`](.github/workflows/build-desktop.yml)).
+Push a tag to produce a release with all three:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+| OS | Output | Build locally |
+|---|---|---|
+| Linux | `IrisCode` binary + `.tar.gz` | `bash scripts/build_linux.sh` |
+| Windows | `IrisCode.exe` + Inno Setup installer | `scripts\build_windows.ps1` |
+| macOS | `IrisCode.app` + `.dmg` | `bash scripts/build_macos.sh` |
+
+The bundle is fully self-contained (Python + Qt included, ~95 MB on Linux); end users
+just need a running hermes-router to point it at.
+
 ## hermes-router
 
 An OpenAI-API-compatible local router that auto-selects among free providers (Gemini,

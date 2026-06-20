@@ -1,9 +1,43 @@
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 _SETTINGS_FILE = "forge_settings.json"  # optional editable overrides (JSON overlay)
+_APP_DIR_NAME = "IrisCode"
+
+
+def user_data_dir() -> Path:
+    """Per-user, writable directory for the DB and settings.
+
+    Critical for the packaged desktop app: an installed binary runs with its
+    working directory set to the (read-only) install location, so relative
+    paths like 'forge_memory.db' fail with 'unable to open database file'.
+    Resolve to the OS-standard app-data location instead:
+      • Windows: %APPDATA%\\IrisCode
+      • macOS:   ~/Library/Application Support/IrisCode
+      • Linux:   $XDG_DATA_HOME/IrisCode (default ~/.local/share/IrisCode)
+    """
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~\\AppData\\Roaming")
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    d = Path(base) / _APP_DIR_NAME
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        d = Path(os.path.expanduser("~"))  # last resort: home dir
+    return d
+
+
+def settings_path() -> Path:
+    """Location of forge_settings.json. Honours FORGE_SETTINGS_PATH; otherwise
+    sits in the user data dir so the GUI can always write it."""
+    override = os.getenv("FORGE_SETTINGS_PATH")
+    return Path(override) if override else user_data_dir() / _SETTINGS_FILE
 
 
 @dataclass
@@ -38,11 +72,14 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
+        # When FORGE_DB_PATH isn't set, default to a writable per-user location
+        # (not the cwd), so the installed desktop app can always open its DB.
+        db_path = os.getenv("FORGE_DB_PATH") or str(user_data_dir() / "forge_memory.db")
         return cls(
             router_url=os.getenv("FORGE_ROUTER_URL", "http://localhost:8319"),
             api_key=os.getenv("FORGE_API_KEY", "sk-router-hermes-1"),
             model=os.getenv("FORGE_MODEL", "hermes-router"),
-            db_path=os.getenv("FORGE_DB_PATH", "forge_memory.db"),
+            db_path=db_path,
             project_dir=os.getenv("FORGE_PROJECT_DIR", ""),
             shell_timeout=int(os.getenv("FORGE_SHELL_TIMEOUT", "30") or "30"),
         )
@@ -51,7 +88,7 @@ class Config:
     def load(cls) -> "Config":
         """from_env() plus optional overrides from forge_settings.json."""
         cfg = cls.from_env()
-        path = Path(_SETTINGS_FILE)
+        path = settings_path()
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -82,4 +119,4 @@ class Config:
             "project_dir": self.project_dir,
             "shell_timeout": self.shell_timeout,
         }
-        Path(_SETTINGS_FILE).write_text(json.dumps(data, indent=2), encoding="utf-8")
+        settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")

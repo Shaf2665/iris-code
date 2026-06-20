@@ -351,13 +351,25 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
-    config = Config.load()
     app = QApplication(sys.argv)
     app.setApplicationName("Iris Code")
     app.setApplicationDisplayName("Iris Code")
     app.setWindowIcon(_app_icon())
     app.setStyleSheet(STYLESHEET)
-    win = MainWindow(config)
+    try:
+        config = Config.load()
+        win = MainWindow(config)
+    except Exception as e:  # noqa: BLE001 — show a friendly dialog, not a crash box
+        import traceback
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox()
+        box.setWindowTitle("Iris Code — startup error")
+        box.setIcon(QMessageBox.Critical)
+        box.setText("Iris Code couldn't start.")
+        box.setInformativeText(str(e))
+        box.setDetailedText(traceback.format_exc())
+        box.exec()
+        return 1
     win.show()
     return app.exec()
 

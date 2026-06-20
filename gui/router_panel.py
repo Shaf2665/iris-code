@@ -472,7 +472,10 @@ class RouterDialog(QDialog):
             link = QLabel(f'<a href="{prov["url"]}" style="color:{CYAN}">Get key →</a>')
             link.setOpenExternalLinks(True)
             keys = _KeyList()
-            model = QLineEdit(); model.setPlaceholderText("model override (optional)")
+            model = QLineEdit()
+            model.setPlaceholderText("model(s) — comma-separated for failover")
+            model.setToolTip("Optional. One model, or a comma-separated list the router "
+                             "fails over across (per-model rate-limit failover).")
             self._rows[prov["id"]] = {"keys": keys, "model": model, "prov": prov}
             head = QHBoxLayout(); hw = QWidget(); hw.setLayout(head)
             head.setContentsMargins(0, 0, 0, 0)

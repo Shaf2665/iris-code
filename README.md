@@ -89,18 +89,22 @@ router URL / key / model.
 
 #### Router panel
 
-A built-in **Router** panel (top bar → *Router*) manages your hermes-router without
-dropping to a terminal:
+A built-in **Router** panel (top bar → *Router*) is a control center for your
+hermes-router — configure and run it without a terminal. Point it at your
+hermes-router folder (the one with `docker-compose.yml` + `.env`), then:
 
-- **Status** — live connection, container state, providers, available models, latency, and
-  **Start / Stop / Restart** (via `docker`).
-- **Logs** — tail `docker logs` for the router container.
-- **Config** — edit the router's `.env` / config file in place, then **Save** or **Save & Restart**.
+- **Status** — live connection, providers, models, latency, and **Start / Stop /
+  Restart / Update** (runs `docker compose` in that folder; Update = `git pull` +
+  `up -d --build`).
+- **Providers** — a structured editor for all built-in providers (Gemini, OpenRouter,
+  Groq, Cerebras, OpenAI, Anthropic, …): enter masked key(s) per provider + an optional
+  model override, with a "Get key →" link each. **Save** writes the router's `.env`;
+  **Save & Restart** applies it.
+- **Logs** — tail `docker compose logs`.
 
-Point it at your container with the **Container name** / **Config file** fields (defaults:
-`hermes-router`; configurable via `FORGE_ROUTER_CONTAINER` / `FORGE_ROUTER_CONFIG`).
+Folder path persists (also via `FORGE_ROUTER_DIR`).
 
-![Router panel](docs/router-panel.png)
+![Router providers](docs/router-providers.png)
 
 Run it from source:
 

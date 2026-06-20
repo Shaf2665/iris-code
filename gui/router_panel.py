@@ -1,86 +1,84 @@
 """
-Router panel — observe and control the local hermes-router from the GUI.
+Router Control Center — configure and run the hermes-router from the GUI.
 
-Three tabs:
-  • Status — connection, container state, providers, models, latency; Start/Stop/Restart.
-  • Logs   — tail of `docker logs`.
-  • Config — container name + config-file path, edit the router's config, Save / Save & Restart.
+Header: the hermes-router folder (the one with docker-compose.yml + .env), which
+drives both the provider/key editor and the lifecycle buttons.
 
-All router/docker/HTTP work runs in CallWorker threads so the dialog never freezes
-on a slow `docker restart` or an unreachable router.
+Tabs:
+  • Status   — connection, providers, models, latency; Start / Stop / Restart / Update
+               (docker compose in the router folder), with output.
+  • Providers — a row per provider (enable via key, masked key field, optional model
+               override, "Get key" link); Save writes the router's .env.
+  • Logs     — `docker compose logs` tail.
+
+All docker/HTTP/file work runs in CallWorker threads so a multi-minute
+`compose up --build` never freezes the dialog.
 """
 from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QDialog, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QDialog, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
     QLabel, QPushButton, QPlainTextEdit, QLineEdit, QSpinBox, QFileDialog,
+    QScrollArea, QCheckBox, QFrame,
 )
 
 from forge.config import Config
-from forge.router import RouterAdmin
+from forge.router import RouterAdmin, PROVIDERS
 from .worker import CallWorker
-from .style import OK, ERR, TEXT_DIM, ACCENT, CYAN
+from .style import OK, ERR, TEXT_DIM, ACCENT, CYAN, BORDER
 
 _MONO = 'font-family:"Cascadia Code","Consolas","DejaVu Sans Mono",monospace; font-size:12px;'
-
-_CONTAINER_COLORS = {
-    "running": OK,
-    "restarting": ACCENT,
-    "paused": ACCENT,
-    "exited": ERR,
-    "dead": ERR,
-    "missing": TEXT_DIM,
-    "docker-missing": TEXT_DIM,
-    "unknown": TEXT_DIM,
-}
+_PROXY_VAR = "PROXY_API_KEYS"
 
 
 class RouterDialog(QDialog):
-    # Emitted after a start/stop/restart or a config save, so the main window
-    # can re-run its own health check.
     router_changed = Signal()
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self._config = config
         self._admin = RouterAdmin(
-            config.router_url, config.api_key, config.router_container, config.router_config_path
+            config.router_url, config.api_key, config.router_container,
+            config.router_config_path, config.router_dir,
         )
         self._workers: set[CallWorker] = set()
+        self._rows: dict[str, dict] = {}
 
         self.setWindowTitle("Iris Code — Router")
-        self.setMinimumSize(640, 520)
+        self.setMinimumSize(720, 600)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_status_tab(), "Status")
-        tabs.addTab(self._build_logs_tab(), "Logs")
-        tabs.addTab(self._build_config_tab(), "Config")
+        root = QVBoxLayout(self)
+        root.addWidget(self._build_header())
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._build_status_tab(), "Status")
+        self._tabs.addTab(self._build_providers_tab(), "Providers")
+        self._tabs.addTab(self._build_logs_tab(), "Logs")
+        root.addWidget(self._tabs)
 
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
         bottom = QHBoxLayout()
         bottom.addStretch(1)
         bottom.addWidget(close)
-
-        root = QVBoxLayout(self)
-        root.addWidget(tabs)
         root.addLayout(bottom)
 
         self.refresh_status()
+        self._load_providers()
 
     # ── worker helper ──────────────────────────────────────────────────
 
     def _run(self, fn, on_result, on_error=None) -> None:
         worker = CallWorker("", fn)
 
-        def _done(_tag, res):
+        def _done(_t, res):
             self._workers.discard(worker)
             on_result(res)
 
-        def _fail(_tag, err):
+        def _fail(_t, err):
             self._workers.discard(worker)
             (on_error or (lambda e: self._set_action(f"Error: {e}", ERR)))(err)
 
@@ -88,6 +86,35 @@ class RouterDialog(QDialog):
         worker.failed.connect(_fail)
         self._workers.add(worker)
         worker.start()
+
+    # ── header: router folder ──────────────────────────────────────────
+
+    def _build_header(self) -> QWidget:
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 6)
+        lay.addWidget(QLabel("hermes-router folder:"))
+        self._dir_edit = QLineEdit(self._config.router_dir)
+        self._dir_edit.setPlaceholderText("Folder containing docker-compose.yml and .env")
+        self._dir_edit.editingFinished.connect(self._sync_dir)
+        lay.addWidget(self._dir_edit, 1)
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse_dir)
+        lay.addWidget(browse)
+        return w
+
+    def _sync_dir(self) -> None:
+        self._config.router_dir = self._dir_edit.text().strip()
+        self._config.save_overrides()
+        self._admin.router_dir = self._config.router_dir
+
+    def _browse_dir(self) -> None:
+        start = self._dir_edit.text().strip() or os.path.expanduser("~")
+        path = QFileDialog.getExistingDirectory(self, "Select the hermes-router folder", start)
+        if path:
+            self._dir_edit.setText(path)
+            self._sync_dir()
+            self._load_providers()
 
     # ── Status tab ─────────────────────────────────────────────────────
 
@@ -97,34 +124,32 @@ class RouterDialog(QDialog):
 
         form = QFormLayout()
         self._conn_lbl = QLabel("checking…")
-        self._container_lbl = QLabel("—")
         self._latency_lbl = QLabel("—")
-        self._providers_lbl = QLabel("—")
-        self._providers_lbl.setWordWrap(True)
-        self._models_lbl = QLabel("—")
-        self._models_lbl.setWordWrap(True)
+        self._providers_lbl = QLabel("—"); self._providers_lbl.setWordWrap(True)
+        self._models_lbl = QLabel("—"); self._models_lbl.setWordWrap(True)
         form.addRow("Connection", self._conn_lbl)
-        form.addRow("Container", self._container_lbl)
         form.addRow("Latency", self._latency_lbl)
-        form.addRow("Providers", self._providers_lbl)
+        form.addRow("Live providers", self._providers_lbl)
         form.addRow("Models", self._models_lbl)
         lay.addLayout(form)
 
-        btn_row = QHBoxLayout()
+        row = QHBoxLayout()
         self._start_btn = QPushButton("Start")
         self._stop_btn = QPushButton("Stop")
         self._restart_btn = QPushButton("Restart")
-        self._restart_btn.setObjectName("Send")
-        refresh_btn = QPushButton("Refresh")
-        self._start_btn.clicked.connect(lambda: self._docker_action("start"))
-        self._stop_btn.clicked.connect(lambda: self._docker_action("stop"))
-        self._restart_btn.clicked.connect(lambda: self._docker_action("restart"))
-        refresh_btn.clicked.connect(self.refresh_status)
-        for b in (self._start_btn, self._stop_btn, self._restart_btn):
-            btn_row.addWidget(b)
-        btn_row.addStretch(1)
-        btn_row.addWidget(refresh_btn)
-        lay.addLayout(btn_row)
+        self._update_btn = QPushButton("Update")
+        self._update_btn.setObjectName("Send")
+        refresh = QPushButton("Refresh")
+        self._start_btn.clicked.connect(lambda: self._lifecycle("up"))
+        self._stop_btn.clicked.connect(lambda: self._lifecycle("down"))
+        self._restart_btn.clicked.connect(lambda: self._lifecycle("restart"))
+        self._update_btn.clicked.connect(lambda: self._lifecycle("update"))
+        refresh.clicked.connect(self.refresh_status)
+        for b in (self._start_btn, self._stop_btn, self._restart_btn, self._update_btn):
+            row.addWidget(b)
+        row.addStretch(1)
+        row.addWidget(refresh)
+        lay.addLayout(row)
 
         self._action_lbl = QLabel("")
         self._action_lbl.setWordWrap(True)
@@ -137,7 +162,6 @@ class RouterDialog(QDialog):
         self._conn_lbl.setText("checking…")
         self._conn_lbl.setStyleSheet(f"color:{TEXT_DIM}")
         self._run(self._admin.health, self._apply_health)
-        self._run(lambda: self._admin.container_status(), self._apply_container)
         self._run(self._admin.models, self._apply_models)
 
     def _apply_health(self, h: dict) -> None:
@@ -153,35 +177,31 @@ class RouterDialog(QDialog):
             self._latency_lbl.setText("—")
             self._providers_lbl.setText("—")
 
-    def _apply_container(self, status: str) -> None:
-        color = _CONTAINER_COLORS.get(status, TEXT_DIM)
-        label = {
-            "docker-missing": "docker not installed / not on PATH",
-            "missing": f"no container named '{self._admin.container}'",
-        }.get(status, status)
-        self._container_lbl.setText(label)
-        self._container_lbl.setStyleSheet(f"color:{color}")
-        running = status == "running"
-        self._start_btn.setEnabled(status not in ("running", "docker-missing"))
-        self._stop_btn.setEnabled(running)
-        self._restart_btn.setEnabled(status not in ("docker-missing", "missing"))
-
     def _apply_models(self, models: list[str]) -> None:
         if models:
-            shown = ", ".join(models[:8]) + (f"  (+{len(models) - 8} more)" if len(models) > 8 else "")
+            shown = ", ".join(models[:8]) + (f"  (+{len(models) - 8})" if len(models) > 8 else "")
             self._models_lbl.setText(f"{len(models)}: {shown}")
         else:
             self._models_lbl.setText("—")
 
-    def _docker_action(self, action: str) -> None:
-        self._set_action(f"Running docker {action} {self._admin.container}…", ACCENT)
-        for b in (self._start_btn, self._stop_btn, self._restart_btn):
+    def _lifecycle(self, action: str) -> None:
+        self._sync_dir()
+        if not self._config.router_dir:
+            self._set_action("Set the hermes-router folder above first.", ERR)
+            return
+        verb = {"up": "Starting", "down": "Stopping", "restart": "Restarting",
+                "update": "Updating (git pull + rebuild — can take a few minutes)"}[action]
+        self._set_action(f"{verb}…", ACCENT)
+        for b in (self._start_btn, self._stop_btn, self._restart_btn, self._update_btn):
             b.setEnabled(False)
-        fn = {"start": self._admin.start, "stop": self._admin.stop, "restart": self._admin.restart}[action]
+        fn = {"up": self._admin.compose_up, "down": self._admin.compose_down,
+              "restart": self._admin.compose_restart, "update": self._admin.compose_update}[action]
 
         def _done(result):
             ok, out = result
-            self._set_action((out or f"{action} done").strip()[:400], OK if ok else ERR)
+            self._set_action(out.strip()[:1200], OK if ok else ERR)
+            for b in (self._start_btn, self._stop_btn, self._restart_btn, self._update_btn):
+                b.setEnabled(True)
             self.router_changed.emit()
             self.refresh_status()
 
@@ -191,116 +211,145 @@ class RouterDialog(QDialog):
         self._action_lbl.setText(text)
         self._action_lbl.setStyleSheet(f"color:{color}; {_MONO}")
 
+    # ── Providers tab ──────────────────────────────────────────────────
+
+    def _build_providers_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Client key (PROXY_API_KEYS):"))
+        self._proxy_edit = QLineEdit()
+        self._proxy_edit.setPlaceholderText("the key Iris Code uses to call the router")
+        top.addWidget(self._proxy_edit, 1)
+        self._show_keys = QCheckBox("Show keys")
+        self._show_keys.toggled.connect(self._toggle_key_echo)
+        top.addWidget(self._show_keys)
+        lay.addLayout(top)
+
+        hint = QLabel("Enter one or more keys per provider (comma-separated). Empty disables a provider. "
+                      "Save writes the router's .env; Start/Restart it from the Status tab to apply.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color:{TEXT_DIM};")
+        lay.addWidget(hint)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        grid = QGridLayout(inner)
+        grid.setColumnStretch(1, 3)
+        grid.setColumnStretch(2, 2)
+        r = 0
+        for prov in PROVIDERS:
+            name = QLabel(f"<b>{prov['label']}</b>")
+            name.setToolTip(prov["note"])
+            link = QLabel(f'<a href="{prov["url"]}" style="color:{CYAN}">Get key →</a>')
+            link.setOpenExternalLinks(True)
+            keys = QLineEdit(); keys.setEchoMode(QLineEdit.Password)
+            keys.setPlaceholderText(f"{prov['keys_var']}  (comma-separated)")
+            model = QLineEdit(); model.setPlaceholderText("model override (optional)")
+            self._rows[prov["id"]] = {"keys": keys, "model": model, "prov": prov}
+            head = QHBoxLayout(); hw = QWidget(); hw.setLayout(head)
+            head.setContentsMargins(0, 0, 0, 0)
+            head.addWidget(name); head.addSpacing(8)
+            note = QLabel(prov["note"]); note.setStyleSheet(f"color:{TEXT_DIM}; font-size:11px;")
+            head.addWidget(note); head.addStretch(1); head.addWidget(link)
+            grid.addWidget(hw, r, 0, 1, 3); r += 1
+            grid.addWidget(keys, r, 0, 1, 2)
+            grid.addWidget(model, r, 2)
+            r += 1
+            sep = QFrame(); sep.setFrameShape(QFrame.HLine)
+            sep.setStyleSheet(f"color:{BORDER};")
+            grid.addWidget(sep, r, 0, 1, 3); r += 1
+        scroll.setWidget(inner)
+        lay.addWidget(scroll, 1)
+
+        self._prov_msg = QLabel("")
+        self._prov_msg.setWordWrap(True)
+        self._prov_msg.setStyleSheet(f"color:{TEXT_DIM}; {_MONO}")
+        lay.addWidget(self._prov_msg)
+
+        btns = QHBoxLayout()
+        reload_btn = QPushButton("Reload")
+        reload_btn.clicked.connect(self._load_providers)
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(lambda: self._save_providers(restart=False))
+        save_restart = QPushButton("Save & Restart")
+        save_restart.setObjectName("Send")
+        save_restart.clicked.connect(lambda: self._save_providers(restart=True))
+        btns.addWidget(reload_btn)
+        btns.addStretch(1)
+        btns.addWidget(save_btn)
+        btns.addWidget(save_restart)
+        lay.addLayout(btns)
+        return w
+
+    def _toggle_key_echo(self, show: bool) -> None:
+        mode = QLineEdit.Normal if show else QLineEdit.Password
+        self._proxy_edit.setEchoMode(mode)
+        for row in self._rows.values():
+            row["keys"].setEchoMode(mode)
+
+    def _load_providers(self) -> None:
+        self._sync_dir()
+        env = self._admin.read_env_vars()
+        self._proxy_edit.setText(env.get(_PROXY_VAR, ""))
+        for prov in PROVIDERS:
+            row = self._rows.get(prov["id"])
+            if row:
+                row["keys"].setText(env.get(prov["keys_var"], ""))
+                row["model"].setText(env.get(prov["model_var"], ""))
+        if not self._config.router_dir:
+            self._prov_msg.setText("Set the hermes-router folder above to load/save keys.")
+            self._prov_msg.setStyleSheet(f"color:{ACCENT}; {_MONO}")
+        else:
+            self._prov_msg.setText(f"Loaded {self._admin.env_path()}")
+            self._prov_msg.setStyleSheet(f"color:{TEXT_DIM}; {_MONO}")
+
+    def _save_providers(self, restart: bool) -> None:
+        self._sync_dir()
+        if not self._config.router_dir:
+            self._prov_msg.setText("Set the hermes-router folder first.")
+            self._prov_msg.setStyleSheet(f"color:{ERR}; {_MONO}")
+            return
+        updates: dict[str, str] = {_PROXY_VAR: self._proxy_edit.text().strip()}
+        for prov in PROVIDERS:
+            row = self._rows[prov["id"]]
+            updates[prov["keys_var"]] = row["keys"].text().strip()
+            updates[prov["model_var"]] = row["model"].text().strip()
+        ok, msg = self._admin.write_env_vars(updates)
+        self._prov_msg.setText(msg)
+        self._prov_msg.setStyleSheet(f"color:{OK if ok else ERR}; {_MONO}")
+        self.router_changed.emit()
+        if ok and restart:
+            self._tabs.setCurrentIndex(0)
+            self._lifecycle("restart")
+
     # ── Logs tab ───────────────────────────────────────────────────────
 
     def _build_logs_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Tail lines:"))
-        self._tail_spin = QSpinBox()
-        self._tail_spin.setRange(10, 5000)
-        self._tail_spin.setValue(200)
-        self._tail_spin.setSingleStep(50)
+        self._tail_spin = QSpinBox(); self._tail_spin.setRange(10, 5000)
+        self._tail_spin.setValue(200); self._tail_spin.setSingleStep(50)
         controls.addWidget(self._tail_spin)
         controls.addStretch(1)
-        refresh = QPushButton("Fetch logs")
-        refresh.clicked.connect(self._refresh_logs)
-        controls.addWidget(refresh)
+        fetch = QPushButton("Fetch logs")
+        fetch.clicked.connect(self._refresh_logs)
+        controls.addWidget(fetch)
         lay.addLayout(controls)
 
         self._logs_view = QPlainTextEdit()
         self._logs_view.setReadOnly(True)
         self._logs_view.setStyleSheet(_MONO)
-        self._logs_view.setPlaceholderText("Click 'Fetch logs' to tail `docker logs` for the router container.")
+        self._logs_view.setPlaceholderText("Click 'Fetch logs' to tail `docker compose logs` for the router.")
         lay.addWidget(self._logs_view, 1)
         return w
 
     def _refresh_logs(self) -> None:
+        self._sync_dir()
         self._logs_view.setPlainText("Fetching…")
         tail = self._tail_spin.value()
-        self._run(lambda: self._admin.logs(tail), self._logs_view.setPlainText)
-
-    # ── Config tab ─────────────────────────────────────────────────────
-
-    def _build_config_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-
-        form = QFormLayout()
-        self._container_edit = QLineEdit(self._config.router_container)
-        form.addRow("Container name", self._container_edit)
-
-        path_row = QHBoxLayout()
-        self._path_edit = QLineEdit(self._config.router_config_path)
-        self._path_edit.setPlaceholderText("Path to the router's .env / config file")
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse_config)
-        path_row.addWidget(self._path_edit, 1)
-        path_row.addWidget(browse)
-        form.addRow("Config file", path_row)
-        lay.addLayout(form)
-
-        load_row = QHBoxLayout()
-        load_btn = QPushButton("Load")
-        load_btn.clicked.connect(self._load_config)
-        load_row.addStretch(1)
-        load_row.addWidget(load_btn)
-        lay.addLayout(load_row)
-
-        self._config_edit = QPlainTextEdit()
-        self._config_edit.setStyleSheet(_MONO)
-        self._config_edit.setPlaceholderText("Load the router config file to view/edit it here.")
-        lay.addWidget(self._config_edit, 1)
-
-        self._config_msg = QLabel("")
-        self._config_msg.setWordWrap(True)
-        self._config_msg.setStyleSheet(f"color:{TEXT_DIM}; {_MONO}")
-        lay.addWidget(self._config_msg)
-
-        save_row = QHBoxLayout()
-        save_row.addStretch(1)
-        save_btn = QPushButton("Save")
-        save_btn.clicked.connect(lambda: self._save_config(restart=False))
-        save_restart = QPushButton("Save & Restart")
-        save_restart.setObjectName("Send")
-        save_restart.clicked.connect(lambda: self._save_config(restart=True))
-        save_row.addWidget(save_btn)
-        save_row.addWidget(save_restart)
-        lay.addLayout(save_row)
-        return w
-
-    def _sync_admin_from_fields(self) -> None:
-        """Push edited container/path into config (persisted) and the admin."""
-        self._config.router_container = self._container_edit.text().strip() or "hermes-router"
-        self._config.router_config_path = self._path_edit.text().strip()
-        self._config.save_overrides()
-        self._admin.container = self._config.router_container
-        self._admin.config_path = self._config.router_config_path
-
-    def _browse_config(self) -> None:
-        start = self._path_edit.text().strip() or os.path.expanduser("~")
-        path, _ = QFileDialog.getOpenFileName(self, "Select router config file", start)
-        if path:
-            self._path_edit.setText(path)
-
-    def _load_config(self) -> None:
-        self._sync_admin_from_fields()
-        ok, content = self._admin.read_config()
-        if ok:
-            self._config_edit.setPlainText(content)
-            self._config_msg.setText(f"Loaded {self._admin.config_path}")
-            self._config_msg.setStyleSheet(f"color:{CYAN}; {_MONO}")
-        else:
-            self._config_msg.setText(content)
-            self._config_msg.setStyleSheet(f"color:{ERR}; {_MONO}")
-
-    def _save_config(self, restart: bool) -> None:
-        self._sync_admin_from_fields()
-        ok, msg = self._admin.write_config(self._config_edit.toPlainText())
-        self._config_msg.setText(msg)
-        self._config_msg.setStyleSheet(f"color:{OK if ok else ERR}; {_MONO}")
-        self.router_changed.emit()
-        if ok and restart:
-            self._docker_action("restart")
+        self._run(lambda: self._admin.compose_logs(tail), self._logs_view.setPlainText)

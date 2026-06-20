@@ -57,6 +57,7 @@ class Config:
     shell_timeout: int = 30      # seconds for shell command timeout
     router_container: str = "hermes-router"  # docker container name for the router
     router_config_path: str = ""             # path to the router's .env/config file
+    router_dir: str = ""                     # hermes-router folder (docker-compose.yml + .env)
     system_prompt: str = (
         "You are Forge, a personal coding assistant. You help with writing, "
         "debugging, and understanding code. You can read and write files, run "
@@ -86,6 +87,7 @@ class Config:
             shell_timeout=int(os.getenv("FORGE_SHELL_TIMEOUT", "30") or "30"),
             router_container=os.getenv("FORGE_ROUTER_CONTAINER", "hermes-router"),
             router_config_path=os.getenv("FORGE_ROUTER_CONFIG", ""),
+            router_dir=os.getenv("FORGE_ROUTER_DIR", ""),
         )
 
     @classmethod
@@ -114,6 +116,8 @@ class Config:
                 cfg.router_container = data["router_container"]
             if isinstance(data.get("router_config_path"), str):
                 cfg.router_config_path = data["router_config_path"]
+            if isinstance(data.get("router_dir"), str):
+                cfg.router_dir = data["router_dir"]
         return cfg
 
     def save_overrides(self) -> None:
@@ -128,5 +132,6 @@ class Config:
             "shell_timeout": self.shell_timeout,
             "router_container": self.router_container,
             "router_config_path": self.router_config_path,
+            "router_dir": self.router_dir,
         }
         settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")

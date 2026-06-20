@@ -1,12 +1,19 @@
 # Iris Code (Forge)
 
-A personal, developer-focused **coding agent** that runs in your terminal. It chats,
+[![Build desktop apps](https://github.com/Shaf2665/iris-code/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/Shaf2665/iris-code/actions/workflows/build-desktop.yml)
+[![Latest release](https://img.shields.io/github/v/release/Shaf2665/iris-code?sort=semver)](https://github.com/Shaf2665/iris-code/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)
+
+A personal, developer-focused **coding agent** for your terminal **and** desktop. It chats,
 remembers your preferences across sessions, runs shell commands, inspects git, and
 semantically searches your codebase — all through a local
 [hermes-router](#hermes-router) instance that fans out to free LLM providers.
 
 Iris Code is the single-developer sibling of Iris Teams. The defining difference: **Forge
 can execute shell commands and index your codebase.**
+
+![Iris Code desktop app](docs/screenshot.png)
 
 ## Features
 

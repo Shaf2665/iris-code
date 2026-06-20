@@ -12,6 +12,7 @@ Produces a single windowed executable in dist/:
 markdown and pygments import lexers/styles/extensions dynamically, so we
 collect them wholesale; the PySide6 PyInstaller hook handles Qt plugins.
 """
+import os
 import sys
 from PyInstaller.utils.hooks import collect_all
 
@@ -22,8 +23,19 @@ for pkg in ("markdown", "pygments", "forge", "gui"):
     binaries += b
     hiddenimports += h
 
+# Bundle the PNG so the running app can set its window icon (frozen + source).
+datas += [(os.path.join("..", "packaging", "icon.png"), "packaging")]
+
 block_cipher = None
 is_mac = sys.platform == "darwin"
+
+# Platform-specific app icon: .ico (Windows), .icns (macOS), none (Linux).
+if sys.platform == "win32":
+    app_icon = os.path.join("..", "packaging", "icon.ico")
+elif is_mac:
+    app_icon = os.path.join("..", "packaging", "icon.icns")
+else:
+    app_icon = None
 
 a = Analysis(
     ["../iris_code_gui.py"],
@@ -57,7 +69,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,                      # windowed app (no terminal)
     disable_windowed_traceback=False,
-    icon=None,
+    icon=app_icon,
     target_arch=None,
 )
 
@@ -65,7 +77,7 @@ if is_mac:
     app = BUNDLE(
         exe,
         name="IrisCode.app",
-        icon=None,
+        icon=app_icon,
         bundle_identifier="dev.iriscode.forge",
         info_plist={
             "CFBundleName": "Iris Code",

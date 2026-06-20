@@ -10,7 +10,7 @@ import os
 import sys
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut, QTextOption
+from PySide6.QtGui import QIcon, QTextOption
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QLabel, QPushButton, QPlainTextEdit, QComboBox, QFileDialog, QInputDialog,
@@ -26,6 +26,20 @@ from .worker import ChatWorker, IndexWorker, HealthWorker
 from .settings import SettingsDialog
 
 _DEFAULT_SESSION = "gui_dev"
+
+
+def resource_path(rel: str) -> str:
+    """Resolve a bundled data file both when frozen (PyInstaller _MEIPASS) and
+    when running from source (repo root)."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, rel)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), rel)
+
+
+def _app_icon() -> QIcon:
+    path = resource_path(os.path.join("packaging", "icon.png"))
+    return QIcon(path) if os.path.exists(path) else QIcon()
 
 
 def _conv_id(name: str | None) -> str:
@@ -51,6 +65,7 @@ class MainWindow(QMainWindow):
         self._health_worker: HealthWorker | None = None
 
         self.setWindowTitle("Iris Code — Forge")
+        self.setWindowIcon(_app_icon())
         self.resize(940, 720)
         self._build_ui()
         self._store.save(self._conv_id, self._history)
@@ -340,6 +355,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Iris Code")
     app.setApplicationDisplayName("Iris Code")
+    app.setWindowIcon(_app_icon())
     app.setStyleSheet(STYLESHEET)
     win = MainWindow(config)
     win.show()

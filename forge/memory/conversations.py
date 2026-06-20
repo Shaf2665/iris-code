@@ -55,6 +55,12 @@ class ConversationStore:
             self._conn.execute("DELETE FROM conversations WHERE conv_id = ?", (conv_id,))
             self._conn.commit()
 
+    def clear_all(self) -> None:
+        """Wipe every stored conversation (used by the in-app 'Clear data' action)."""
+        with self._lock:
+            self._conn.execute("DELETE FROM conversations")
+            self._conn.commit()
+
     def list_sessions(self) -> list[tuple[str, str, int]]:
         """Return (conv_id, updated_at, user_message_count) sorted newest first."""
         with self._lock:

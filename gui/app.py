@@ -68,17 +68,21 @@ class MainWindow(QMainWindow):
         self._agent = Agent(config)
         self._store = ConversationStore(config.db_path)
         self._conv_id = _DEFAULT_SESSION
-        self._history: list[dict] = self._store.load(self._conv_id)
+        # Start each launch with a clean, empty conversation. Prior named sessions
+        # stay in the store (and the dropdown) so they can be resumed on demand;
+        # the default view is fresh and only persisted once the user sends.
+        self._history: list[dict] = []
         self._chat_worker: ChatWorker | None = None
         self._index_worker: IndexWorker | None = None
         self._health_worker: HealthWorker | None = None
+        self._router_ok = False          # last health result; gates auto-indexing
+        self._auto_indexed = False       # auto-index runs at most once per project open
 
         self.setWindowTitle("Iris Code — Forge")
         self.setWindowIcon(_app_icon())
         self.resize(940, 720)
         self.setMinimumSize(720, 520)
         self._build_ui()
-        self._store.save(self._conv_id, self._history)
 
         self._refresh_sessions()
         self._chat.reset(self._history)
@@ -106,6 +110,7 @@ class MainWindow(QMainWindow):
         self._chat = ChatView()
         self._file_tree = FileTree()
         self._file_tree.file_activated.connect(self._on_file_activated)
+        self._file_tree.index_folder.connect(lambda _p: self._start_index(force=True))
         self._file_tree.hide()
 
         self._splitter = QSplitter(Qt.Horizontal)
@@ -279,8 +284,27 @@ class MainWindow(QMainWindow):
             return
         resolved = self._agent.set_project(path)
         self._config.save_overrides()
+        self._auto_indexed = False  # new project — allow one auto-index pass
         self._update_project_label()
         self._chat.add_system_note(f"Active project set to {resolved}")
+        self._maybe_auto_index()
+
+    def _maybe_auto_index(self) -> None:
+        """Index the active project in the background when it isn't indexed yet.
+        Gated on router connectivity (embeddings go through the router) and runs at
+        most once per project open, so the user never has to click Index manually."""
+        pd = self._config.project_dir
+        if not pd or self._auto_indexed or self._index_worker is not None:
+            return
+        if self._agent.index.stats(pd)["chunk_count"]:
+            self._auto_indexed = True
+            return
+        if not self._router_ok:
+            self._chat.add_system_note("Connect the router to enable semantic code search.")
+            return
+        self._auto_indexed = True
+        self._chat.add_system_note(f"Indexing {pd} for semantic search…")
+        self._start_index(force=False)
 
     def _on_toggle_files(self, checked: bool) -> None:
         if checked and not self._config.project_dir:
@@ -323,10 +347,18 @@ class MainWindow(QMainWindow):
         pd = self._config.project_dir
         if not pd or self._index_worker is not None:
             return
+        self._chat.add_system_note(f"Indexing {pd} …")
+        self._start_index(force=False)
+
+    def _start_index(self, force: bool) -> None:
+        """Kick off a background index pass (shared by the Index button and the
+        auto-index-on-open path)."""
+        pd = self._config.project_dir
+        if not pd or self._index_worker is not None:
+            return
         self._index_btn.setEnabled(False)
         self._index_btn.setText("Indexing…")
-        self._chat.add_system_note(f"Indexing {pd} …")
-        self._index_worker = IndexWorker(self._agent, pd, force=False)
+        self._index_worker = IndexWorker(self._agent, pd, force=force)
         self._index_worker.progress.connect(lambda m: self._chat.add_system_note(m))
         self._index_worker.done.connect(self._on_index_done)
         self._index_worker.failed.connect(self._on_index_failed)
@@ -406,11 +438,34 @@ class MainWindow(QMainWindow):
 
     def _on_settings(self) -> None:
         dlg = SettingsDialog(self._config, self)
+        dlg.clear_history.connect(self._on_clear_history)
+        dlg.clear_everything.connect(self._on_clear_everything)
         if dlg.exec():
             changed = dlg.apply_to(self._config)
             if changed:
                 self._rebuild_agent()
             self._check_health()
+
+    def _reset_view(self) -> None:
+        """Drop back to a fresh, empty conversation and refresh the UI."""
+        self._conv_id = _DEFAULT_SESSION
+        self._history = []
+        self._chat.reset(self._history)
+        self._refresh_sessions()
+        self._update_project_label()
+
+    def _on_clear_history(self) -> None:
+        self._store.clear_all()
+        self._reset_view()
+        self._chat.add_system_note("Chat history cleared.")
+
+    def _on_clear_everything(self) -> None:
+        self._store.clear_all()
+        self._agent.forget_all()
+        self._agent.index.clear_all()
+        self._auto_indexed = False
+        self._reset_view()
+        self._chat.add_system_note("Cleared all conversations, remembered facts, and the code index.")
 
     def _rebuild_agent(self) -> None:
         try:
@@ -432,6 +487,8 @@ class MainWindow(QMainWindow):
         self._health_worker.start()
 
     def _on_health(self, ok: bool, detail: str) -> None:
+        became_online = ok and not self._router_ok
+        self._router_ok = ok
         color = OK if ok else ERR
         self._status_dot.setStyleSheet(f"color:{color}")
         self._status_dot.setToolTip(f"Router: {detail}")
@@ -444,6 +501,9 @@ class MainWindow(QMainWindow):
             + ("" if ok else "\nStart your router, or change the provider in Settings (⚙).")
         )
         self._health_worker = None
+        # First time we see the router online, index the active project if needed.
+        if became_online:
+            self._maybe_auto_index()
 
     # ── lifecycle ──────────────────────────────────────────────────────
 

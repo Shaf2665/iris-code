@@ -36,3 +36,24 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Iris Code keeps its chat history, remembered facts, code index, and settings
+// in %APPDATA%\IrisCode (outside the install dir, so it survives upgrades). On
+// uninstall, offer to remove it so a reinstall starts truly clean.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: string;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    DataDir := ExpandConstant('{userappdata}\IrisCode');
+    if DirExists(DataDir) then
+    begin
+      if MsgBox('Also remove your Iris Code chat history, remembered facts, and settings?'
+                + #13#10 + DataDir,
+                mbConfirmation, MB_YESNO) = IDYES then
+        DelTree(DataDir, True, True, True);
+    end;
+  end;
+end;

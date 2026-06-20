@@ -84,6 +84,31 @@ QLineEdit {{
 }}
 QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
 
+QTreeView {{
+    background-color: {BG_ELEV};
+    border: none;
+    outline: 0;
+    show-decoration-selected: 1;
+}}
+QTreeView::item {{
+    height: 22px;
+    padding: 1px 2px;
+    border: none;
+    color: {TEXT};
+}}
+QTreeView::item:hover {{ background: {BG_INPUT}; }}
+QTreeView::item:selected {{ background: {ACCENT_DIM}; color: {TEXT}; }}
+QTreeView::branch {{ background: transparent; }}
+QPushButton#TreeAction {{
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 14px;
+}}
+QPushButton#TreeAction:hover {{ background: {BG_INPUT}; color: {ACCENT}; }}
+
 QScrollBar:vertical {{ background: {BG}; width: 10px; margin: 0; }}
 QScrollBar::handle:vertical {{ background: {BORDER}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {ACCENT_DIM}; }}

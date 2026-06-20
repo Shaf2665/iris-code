@@ -6,10 +6,10 @@ via a preset or a custom base URL. Writes through Config.save_overrides().
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QComboBox, QLineEdit, QLabel, QPushButton, QHBoxLayout,
-    QVBoxLayout, QSpinBox, QFrame,
+    QVBoxLayout, QSpinBox, QFrame, QMessageBox,
 )
 
 from forge.config import Config
@@ -26,10 +26,14 @@ _PRESETS: list[tuple[str, str, str]] = [
 
 
 class SettingsDialog(QDialog):
+    # Emitted (after the user confirms) so the main window can wipe stored data.
+    clear_history = Signal()      # conversations only
+    clear_everything = Signal()   # conversations + personal memory + index
+
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Iris Code — Settings")
-        self.setMinimumSize(540, 460)
+        self.setMinimumSize(540, 500)
         self._config = config
         self._probe: CallWorker | None = None
 
@@ -70,6 +74,21 @@ class SettingsDialog(QDialog):
         form.addRow(beh_hdr)
         form.addRow("Shell timeout", self._shell_timeout)
         form.addRow("Chat history kept", self._max_history)
+
+        sep2 = QFrame(); sep2.setFrameShape(QFrame.HLine); sep2.setStyleSheet(f"color:{TEXT_DIM};")
+        form.addRow(sep2)
+        danger_hdr = QLabel("Danger zone")
+        danger_hdr.setStyleSheet(f"color:{ERR}; font-weight:700;")
+        form.addRow(danger_hdr)
+        clear_hist_btn = QPushButton("Clear chat history")
+        clear_hist_btn.clicked.connect(self._on_clear_history)
+        clear_all_btn = QPushButton("Clear everything")
+        clear_all_btn.clicked.connect(self._on_clear_everything)
+        danger_row = QHBoxLayout()
+        danger_row.addWidget(clear_hist_btn)
+        danger_row.addWidget(clear_all_btn)
+        danger_row.addStretch(1)
+        form.addRow("Stored data", danger_row)
 
         self._hint = QLabel("")
         self._hint.setWordWrap(True)
@@ -171,6 +190,28 @@ class SettingsDialog(QDialog):
         color = OK if ok else ERR
         label = "connected ✓" if ok else f"unreachable — {detail}"
         self._test_result.setText(f'<span style="color:{color}">{label}</span>')
+
+    # ── danger zone ────────────────────────────────────────────────────
+
+    def _confirm(self, title: str, text: str) -> bool:
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setIcon(QMessageBox.Warning)
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        return box.exec() == QMessageBox.Yes
+
+    def _on_clear_history(self) -> None:
+        if self._confirm("Clear chat history",
+                         "Delete all saved conversations? This cannot be undone."):
+            self.clear_history.emit()
+
+    def _on_clear_everything(self) -> None:
+        if self._confirm("Clear everything",
+                         "Delete all conversations, remembered facts, and the code "
+                         "index? This cannot be undone."):
+            self.clear_everything.emit()
 
     # ── apply ──────────────────────────────────────────────────────────
 

@@ -217,6 +217,12 @@ class ProjectIndex:
             self._conn.execute("DELETE FROM project_chunks WHERE project_dir = ?", (key,))
             self._conn.commit()
 
+    def clear_all(self) -> None:
+        """Drop every indexed chunk for all projects (in-app 'Clear data' action)."""
+        with self._lock:
+            self._conn.execute("DELETE FROM project_chunks")
+            self._conn.commit()
+
     def stats(self, project_dir: str) -> dict:
         key = _norm_key(project_dir)
         with self._lock:

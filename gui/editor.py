@@ -141,7 +141,7 @@ class _LineNumberArea(QWidget):
 class CodeEditor(QPlainTextEdit):
     dirty_changed = Signal(bool)
 
-    def __init__(self, path: str, parent=None):
+    def __init__(self, path: str, parent=None, font_size: int = 11):
         super().__init__(parent)
         self._path = path
         self._dirty = False
@@ -149,7 +149,7 @@ class CodeEditor(QPlainTextEdit):
         self.setWordWrapMode(QTextOption.NoWrap)
         font = QFont("Cascadia Code")
         font.setStyleHint(QFont.Monospace)
-        font.setPointSize(11)
+        font.setPointSize(font_size)
         self.setFont(font)
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
 
@@ -288,9 +288,10 @@ class EditorArea(QWidget):
 
     dirty_changed = Signal()  # any tab's dirty state changed
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, font_size: int = 11):
         super().__init__(parent)
         self._editors: dict[str, CodeEditor] = {}
+        self._font_size = font_size
 
         self._welcome = QTextBrowser()
         self._welcome.setOpenExternalLinks(True)
@@ -317,7 +318,7 @@ class EditorArea(QWidget):
             self._tabs.setCurrentWidget(self._editors[norm])
             self._show_welcome()
             return
-        editor = CodeEditor(path)
+        editor = CodeEditor(path, font_size=self._font_size)
         editor.dirty_changed.connect(lambda _d, p=norm: self._on_dirty(p))
         self._editors[norm] = editor
         idx = self._tabs.addTab(editor, os.path.basename(path))

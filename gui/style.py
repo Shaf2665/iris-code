@@ -117,6 +117,22 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QDialog {{ background-color: {BG_ELEV}; }}
 QLabel.dim {{ color: {TEXT_DIM}; }}
 
+/* ── Settings nav (two-pane preferences) ── */
+QListWidget#SettingsNav {{
+    background-color: {BG};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 4px;
+    outline: 0;
+}}
+QListWidget#SettingsNav::item {{
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: {TEXT_DIM};
+}}
+QListWidget#SettingsNav::item:hover {{ color: {TEXT}; }}
+QListWidget#SettingsNav::item:selected {{ background: {ACCENT_DIM}; color: {TEXT}; }}
+
 /* ── Activity bar (left edge, VS Code-style) ── */
 QToolBar#ActivityBar {{
     background-color: #101216;

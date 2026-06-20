@@ -54,6 +54,7 @@ class Config:
     base_url_override: str = ""   # full OpenAI-compatible base URL for a custom provider
     db_path: str = "forge_memory.db"
     max_history_messages: int = 30
+    editor_font_size: int = 11   # point size for the code editor
     project_dir: str = ""        # active project directory
     shell_timeout: int = 30      # seconds for shell command timeout
     router_container: str = "hermes-router"  # docker container name for the router
@@ -131,6 +132,8 @@ class Config:
                 cfg.shell_timeout = data["shell_timeout"]
             if isinstance(data.get("max_history_messages"), int) and data["max_history_messages"] > 0:
                 cfg.max_history_messages = data["max_history_messages"]
+            if isinstance(data.get("editor_font_size"), int) and 6 <= data["editor_font_size"] <= 48:
+                cfg.editor_font_size = data["editor_font_size"]
             if isinstance(data.get("router_container"), str) and data["router_container"].strip():
                 cfg.router_container = data["router_container"]
             if isinstance(data.get("router_config_path"), str):
@@ -153,6 +156,7 @@ class Config:
             "project_dir": self.project_dir,
             "shell_timeout": self.shell_timeout,
             "max_history_messages": self.max_history_messages,
+            "editor_font_size": self.editor_font_size,
             "router_container": self.router_container,
             "router_config_path": self.router_config_path,
             "router_dir": self.router_dir,

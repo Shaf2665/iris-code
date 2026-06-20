@@ -1,20 +1,22 @@
-"""Settings dialog — choose the LLM provider Iris Code talks to.
+"""Settings dialog — VS Code-style two-pane preferences.
 
-Default is the local hermes-router; you can also point Iris Code at any
-OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server, another router)
-via a preset or a custom base URL. Writes through Config.save_overrides().
+Left: a category list (Connection · Behaviour · Appearance · Data). Right: a
+scrollable list of sections + rows. Top: a search box that filters rows by label
+or keyword. Connection points Iris Code at the local hermes-router or any
+OpenAI-compatible endpoint; the rest tunes behaviour, appearance, and stored data.
+Writes through Config.save_overrides().
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QComboBox, QLineEdit, QLabel, QPushButton, QHBoxLayout,
-    QVBoxLayout, QSpinBox, QFrame, QMessageBox,
+    QDialog, QComboBox, QLineEdit, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
+    QSpinBox, QFrame, QMessageBox, QListWidget, QScrollArea, QWidget,
 )
 
 from forge.config import Config
 from .worker import CallWorker
-from .style import OK, ERR, TEXT_DIM, ACCENT
+from .style import OK, ERR, TEXT_DIM, ACCENT, BORDER
 
 # label -> (base_url or "" for hermes, default model, endpoint placeholder)
 _PRESETS: list[tuple[str, str, str]] = [
@@ -23,6 +25,8 @@ _PRESETS: list[tuple[str, str, str]] = [
     ("OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini"),
     ("Custom (OpenAI-compatible)", "custom", ""),
 ]
+
+_CATEGORIES = ["Connection", "Behaviour", "Appearance", "Data"]
 
 
 class SettingsDialog(QDialog):
@@ -33,94 +37,150 @@ class SettingsDialog(QDialog):
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Iris Code — Settings")
-        self.setMinimumSize(540, 500)
+        self.setMinimumSize(720, 540)
         self._config = config
         self._probe: CallWorker | None = None
+        self._rows: list[tuple[str, QWidget, str]] = []   # (category, row_widget, search_text)
+        self._sections: dict[str, QWidget] = {}           # category -> header widget
 
+        # ── editable widgets ──
         self._provider = QComboBox()
-        for label, _base, _model in _PRESETS:
+        for label, _b, _m in _PRESETS:
             self._provider.addItem(label)
         self._provider.currentIndexChanged.connect(self._on_preset)
-
         self._endpoint = QLineEdit()
-        self._key = QLineEdit()
-        self._key.setEchoMode(QLineEdit.Password)
-        self._model = QLineEdit()
-
-        self._shell_timeout = QSpinBox()
-        self._shell_timeout.setRange(5, 600)
-        self._shell_timeout.setSuffix(" s")
-        self._shell_timeout.setValue(config.shell_timeout)
-        self._max_history = QSpinBox()
-        self._max_history.setRange(4, 200)
-        self._max_history.setValue(config.max_history_messages)
-
-        conn_hdr = QLabel("Connection")
-        conn_hdr.setStyleSheet(f"color:{ACCENT}; font-weight:700;")
-
-        form = QFormLayout()
-        form.setVerticalSpacing(10)
-        form.addRow(conn_hdr)
-        form.addRow("Provider", self._provider)
         self._endpoint_label = QLabel("Router URL")
-        form.addRow(self._endpoint_label, self._endpoint)
-        form.addRow("API key", self._key)
-        form.addRow("Model", self._model)
+        self._key = QLineEdit(); self._key.setEchoMode(QLineEdit.Password)
+        self._model = QLineEdit()
+        self._shell_timeout = QSpinBox(); self._shell_timeout.setRange(5, 600); self._shell_timeout.setSuffix(" s")
+        self._shell_timeout.setValue(config.shell_timeout)
+        self._max_history = QSpinBox(); self._max_history.setRange(4, 200)
+        self._max_history.setValue(config.max_history_messages)
+        self._editor_font = QSpinBox(); self._editor_font.setRange(6, 48); self._editor_font.setSuffix(" pt")
+        self._editor_font.setValue(config.editor_font_size)
 
-        sep = QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet(f"color:{TEXT_DIM};")
-        form.addRow(sep)
-        beh_hdr = QLabel("Behaviour")
-        beh_hdr.setStyleSheet(f"color:{ACCENT}; font-weight:700;")
-        form.addRow(beh_hdr)
-        form.addRow("Shell timeout", self._shell_timeout)
-        form.addRow("Chat history kept", self._max_history)
+        self._hint = QLabel(""); self._hint.setWordWrap(True); self._hint.setStyleSheet(f"color:{TEXT_DIM};")
+        self._test_result = QLabel(""); self._test_result.setTextFormat(Qt.RichText)
+        test_btn = QPushButton("Test connection"); test_btn.clicked.connect(self._on_test)
+        test_row = QWidget(); trl = QHBoxLayout(test_row); trl.setContentsMargins(0, 0, 0, 0)
+        trl.addWidget(test_btn); trl.addWidget(self._test_result, 1)
 
-        sep2 = QFrame(); sep2.setFrameShape(QFrame.HLine); sep2.setStyleSheet(f"color:{TEXT_DIM};")
-        form.addRow(sep2)
-        danger_hdr = QLabel("Danger zone")
-        danger_hdr.setStyleSheet(f"color:{ERR}; font-weight:700;")
-        form.addRow(danger_hdr)
-        clear_hist_btn = QPushButton("Clear chat history")
-        clear_hist_btn.clicked.connect(self._on_clear_history)
-        clear_all_btn = QPushButton("Clear everything")
-        clear_all_btn.clicked.connect(self._on_clear_everything)
-        danger_row = QHBoxLayout()
-        danger_row.addWidget(clear_hist_btn)
-        danger_row.addWidget(clear_all_btn)
-        danger_row.addStretch(1)
-        form.addRow("Stored data", danger_row)
+        clear_hist_btn = QPushButton("Clear chat history"); clear_hist_btn.clicked.connect(self._on_clear_history)
+        clear_all_btn = QPushButton("Clear everything"); clear_all_btn.clicked.connect(self._on_clear_everything)
+        danger_row = QWidget(); drl = QHBoxLayout(danger_row); drl.setContentsMargins(0, 0, 0, 0)
+        drl.addWidget(clear_hist_btn); drl.addWidget(clear_all_btn); drl.addStretch(1)
 
-        self._hint = QLabel("")
-        self._hint.setWordWrap(True)
-        self._hint.setStyleSheet(f"color:{TEXT_DIM};")
+        # ── right pane: sections + rows ──
+        self._body = QWidget()
+        self._body_lay = QVBoxLayout(self._body)
+        self._body_lay.setContentsMargins(4, 0, 8, 0)
+        self._body_lay.setSpacing(6)
 
-        self._test_result = QLabel("")
-        self._test_result.setTextFormat(Qt.RichText)
-        test_btn = QPushButton("Test connection")
-        test_btn.clicked.connect(self._on_test)
-        test_row = QHBoxLayout()
-        test_row.addWidget(test_btn)
-        test_row.addWidget(self._test_result, 1)
+        self._section("Connection")
+        self._add_row("Connection", "Provider", self._provider, "provider preset endpoint")
+        self._add_labeled("Connection", self._endpoint_label, self._endpoint, "router base url endpoint host")
+        self._add_row("Connection", "API key", self._key, "api key token secret")
+        self._add_row("Connection", "Model", self._model, "model name")
+        self._add_full("Connection", self._hint, "connection hint")
+        self._add_full("Connection", test_row, "test connection check")
 
-        save_btn = QPushButton("Save"); save_btn.setObjectName("Send")
-        save_btn.clicked.connect(self.accept)
+        self._section("Behaviour")
+        self._add_row("Behaviour", "Shell timeout", self._shell_timeout, "shell timeout command seconds")
+        self._add_row("Behaviour", "Chat history kept", self._max_history, "chat history messages kept")
+
+        self._section("Appearance")
+        self._add_row("Appearance", "Editor font size", self._editor_font, "editor font size points appearance")
+
+        self._section("Data")
+        ddesc = QLabel("Permanently delete stored conversations, memory, and the code index.")
+        ddesc.setWordWrap(True); ddesc.setStyleSheet(f"color:{TEXT_DIM};")
+        self._add_full("Data", ddesc, "data danger zone")
+        self._add_full("Data", danger_row, "clear chat history everything reset wipe data")
+        self._body_lay.addStretch(1)
+
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(self._body)
+        scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll = scroll
+
+        # ── left nav + search ──
+        self._nav = QListWidget(); self._nav.setMaximumWidth(170); self._nav.setObjectName("SettingsNav")
+        self._nav.addItems(_CATEGORIES)
+        self._nav.currentTextChanged.connect(self._scroll_to)
+        self._nav.setCurrentRow(0)
+
+        self._search = QLineEdit(); self._search.setPlaceholderText("Search settings…")
+        self._search.textChanged.connect(self._apply_search)
+        left = QVBoxLayout(); left.addWidget(self._search); left.addWidget(self._nav, 1)
+
+        center = QHBoxLayout(); center.addLayout(left); center.addWidget(scroll, 1)
+
+        save_btn = QPushButton("Save"); save_btn.setObjectName("Send"); save_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("Cancel"); cancel_btn.clicked.connect(self.reject)
         btn_row = QHBoxLayout(); btn_row.addStretch(1); btn_row.addWidget(cancel_btn); btn_row.addWidget(save_btn)
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(self._hint)
-        layout.addLayout(test_row)
-        layout.addStretch(1)
-        layout.addLayout(btn_row)
+        root = QVBoxLayout(self)
+        root.addLayout(center, 1)
+        root.addLayout(btn_row)
 
         self._load_from_config()
+
+    # ── section/row builders ───────────────────────────────────────────
+
+    def _section(self, title: str) -> None:
+        header = QLabel(title)
+        header.setStyleSheet(f"color:{ACCENT}; font-weight:700; font-size:13px; margin-top:8px;")
+        self._body_lay.addWidget(header)
+        sep = QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet(f"color:{BORDER};")
+        self._body_lay.addWidget(sep)
+        self._sections[title] = header
+
+    def _add_row(self, category: str, label: str, field: QWidget, keywords: str) -> None:
+        row = QWidget()
+        rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0)
+        lbl = QLabel(label); lbl.setMinimumWidth(160)
+        rl.addWidget(lbl); rl.addWidget(field, 1)
+        self._body_lay.addWidget(row)
+        self._rows.append((category, row, f"{label} {keywords}".lower()))
+
+    def _add_labeled(self, category: str, label_widget: QLabel, field: QWidget, keywords: str) -> None:
+        row = QWidget()
+        rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0)
+        label_widget.setMinimumWidth(160)
+        rl.addWidget(label_widget); rl.addWidget(field, 1)
+        self._body_lay.addWidget(row)
+        self._rows.append((category, row, f"{label_widget.text()} {keywords}".lower()))
+
+    def _add_full(self, category: str, widget: QWidget, keywords: str) -> None:
+        self._body_lay.addWidget(widget)
+        self._rows.append((category, widget, keywords.lower()))
+
+    # ── nav / search ───────────────────────────────────────────────────
+
+    def _scroll_to(self, category: str) -> None:
+        header = self._sections.get(category)
+        if header:
+            self._scroll.ensureWidgetVisible(header, 0, 0)
+
+    def _apply_search(self, text: str) -> None:
+        q = text.strip().lower()
+        visible_cats: set[str] = set()
+        for category, widget, search_text in self._rows:
+            show = (q == "" or q in search_text)
+            widget.setVisible(show)
+            if show:
+                visible_cats.add(category)
+        for category, header in self._sections.items():
+            header.setVisible(q == "" or category in visible_cats)
+            # the separator follows the header in the layout; toggle it too
+            idx = self._body_lay.indexOf(header)
+            if idx >= 0 and idx + 1 < self._body_lay.count():
+                sep = self._body_lay.itemAt(idx + 1).widget()
+                if isinstance(sep, QFrame):
+                    sep.setVisible(header.isVisible())
 
     # ── preset/value wiring ────────────────────────────────────────────
 
     def _load_from_config(self) -> None:
-        # Match current config to a preset, prefill its defaults, then restore
-        # the actually-stored endpoint/key/model on top (stored values win).
         if self._config.is_custom_provider:
             base = self._config.base_url_override.strip()
             idx = next((i for i, (_, b, _) in enumerate(_PRESETS) if b and b != "custom" and b == base), 3)
@@ -141,8 +201,6 @@ class SettingsDialog(QDialog):
         return self._provider.currentIndex() == 0
 
     def _on_preset(self, idx: int) -> None:
-        """Prefill canonical endpoint/model for the chosen preset (used on
-        interactive switch; _load_from_config overrides afterwards on open)."""
         _label, base, model = _PRESETS[idx]
         if idx == 0:  # hermes-router
             self._endpoint_label.setText("Router URL")
@@ -203,14 +261,13 @@ class SettingsDialog(QDialog):
         return box.exec() == QMessageBox.Yes
 
     def _on_clear_history(self) -> None:
-        if self._confirm("Clear chat history",
-                         "Delete all saved conversations? This cannot be undone."):
+        if self._confirm("Clear chat history", "Delete all saved conversations? This cannot be undone."):
             self.clear_history.emit()
 
     def _on_clear_everything(self) -> None:
         if self._confirm("Clear everything",
-                         "Delete all conversations, remembered facts, and the code "
-                         "index? This cannot be undone."):
+                         "Delete all conversations, remembered facts, and the code index? "
+                         "This cannot be undone."):
             self.clear_everything.emit()
 
     # ── apply ──────────────────────────────────────────────────────────
@@ -239,5 +296,6 @@ class SettingsDialog(QDialog):
         config.base_url_override = new_override
         config.shell_timeout = self._shell_timeout.value()
         config.max_history_messages = self._max_history.value()
+        config.editor_font_size = self._editor_font.value()
         config.save_overrides()
         return changed

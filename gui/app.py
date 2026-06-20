@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         self.setMenuWidget(self._build_topbar())
 
         # Center: the editor area (tabbed, editable).
-        self._editor = EditorArea()
+        self._editor = EditorArea(font_size=self._config.editor_font_size)
         self.setCentralWidget(self._editor)
 
         # Explorer (left dock).

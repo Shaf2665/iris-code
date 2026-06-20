@@ -215,6 +215,30 @@ class RouterAdmin:
                 out[m.group(1)] = m.group(2).strip()
         return out
 
+    def read_env_text(self) -> tuple[bool, str]:
+        """Read the router's whole .env verbatim, for the raw editor."""
+        if not self.router_dir:
+            return False, "Set the hermes-router folder first."
+        p = self.env_path()
+        if not p.exists():
+            return True, ""  # nothing yet — let the user create it
+        try:
+            return True, p.read_text(encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            return False, f"Could not read {p}: {e}"
+
+    def write_env_text(self, text: str) -> tuple[bool, str]:
+        """Write the router's whole .env verbatim, for the raw editor."""
+        if not self.router_dir:
+            return False, "Set the hermes-router folder first."
+        p = self.env_path()
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+            return True, f"Saved {p}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"Could not write {p}: {e}"
+
     def provider_state(self) -> list[dict]:
         """Per-provider current keys + model override from .env, for the UI."""
         env = self.read_env_vars()
@@ -292,6 +316,15 @@ class RouterAdmin:
 
     def compose_restart(self) -> tuple[bool, str]:
         return self._compose("restart")
+
+    def compose_pull(self) -> tuple[bool, str]:
+        return self._compose("pull")
+
+    def compose_build(self) -> tuple[bool, str]:
+        return self._compose("build")
+
+    def compose_ps(self) -> tuple[bool, str]:
+        return self._compose("ps", timeout=_DOCKER_TIMEOUT)
 
     def compose_logs(self, tail: int = 200) -> str:
         ok, out = self._compose("logs", "--tail", str(int(tail)), "--no-color", timeout=_DOCKER_TIMEOUT)

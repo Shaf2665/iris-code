@@ -135,6 +135,11 @@ class MainWindow(QMainWindow):
         new_btn.clicked.connect(self._on_new_session)
         lay.addWidget(new_btn)
 
+        router_btn = QPushButton("Router")
+        router_btn.setToolTip("Manage the hermes-router (status, logs, config, start/stop)")
+        router_btn.clicked.connect(self._on_router_panel)
+        lay.addWidget(router_btn)
+
         self._status_dot = QLabel("●", objectName="StatusDot")
         self._status_dot.setStyleSheet(f"color:{TEXT_DIM}")
         self._status_dot.setToolTip("Router status")
@@ -310,6 +315,13 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
 
     # ── settings / health ──────────────────────────────────────────────
+
+    def _on_router_panel(self) -> None:
+        from .router_panel import RouterDialog
+        dlg = RouterDialog(self._config, self)
+        dlg.router_changed.connect(self._check_health)
+        dlg.exec()
+        self._check_health()
 
     def _on_settings(self) -> None:
         dlg = SettingsDialog(self._config, self)

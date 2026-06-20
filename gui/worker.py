@@ -77,3 +77,25 @@ class HealthWorker(QThread):
                 self.result.emit(False, f"HTTP {r.status_code}")
         except Exception as e:  # noqa: BLE001
             self.result.emit(False, str(e)[:60])
+
+
+class CallWorker(QThread):
+    """Runs an arbitrary callable off the UI thread and emits its return value.
+
+    Used by the Router panel for health/models/logs/docker calls so a slow
+    `docker restart` or an unreachable router never freezes the window. A tag
+    string is echoed back so one handler can route several call types.
+    """
+    done = Signal(str, object)   # (tag, result)
+    failed = Signal(str, str)    # (tag, error)
+
+    def __init__(self, tag, fn, parent: QObject | None = None):
+        super().__init__(parent)
+        self._tag = tag
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.done.emit(self._tag, self._fn())
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(self._tag, str(e))

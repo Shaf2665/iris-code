@@ -55,6 +55,8 @@ class Config:
     max_history_messages: int = 30
     project_dir: str = ""        # active project directory
     shell_timeout: int = 30      # seconds for shell command timeout
+    router_container: str = "hermes-router"  # docker container name for the router
+    router_config_path: str = ""             # path to the router's .env/config file
     system_prompt: str = (
         "You are Forge, a personal coding assistant. You help with writing, "
         "debugging, and understanding code. You can read and write files, run "
@@ -82,6 +84,8 @@ class Config:
             db_path=db_path,
             project_dir=os.getenv("FORGE_PROJECT_DIR", ""),
             shell_timeout=int(os.getenv("FORGE_SHELL_TIMEOUT", "30") or "30"),
+            router_container=os.getenv("FORGE_ROUTER_CONTAINER", "hermes-router"),
+            router_config_path=os.getenv("FORGE_ROUTER_CONFIG", ""),
         )
 
     @classmethod
@@ -106,6 +110,10 @@ class Config:
                 cfg.project_dir = data["project_dir"]
             if isinstance(data.get("shell_timeout"), int):
                 cfg.shell_timeout = data["shell_timeout"]
+            if isinstance(data.get("router_container"), str) and data["router_container"].strip():
+                cfg.router_container = data["router_container"]
+            if isinstance(data.get("router_config_path"), str):
+                cfg.router_config_path = data["router_config_path"]
         return cfg
 
     def save_overrides(self) -> None:
@@ -118,5 +126,7 @@ class Config:
             "model": self.model,
             "project_dir": self.project_dir,
             "shell_timeout": self.shell_timeout,
+            "router_container": self.router_container,
+            "router_config_path": self.router_config_path,
         }
         settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")

@@ -87,6 +87,21 @@ and macOS — a windowed chat with the same forge backend, a project picker, a o
 semantic indexer, a router health indicator, named sessions, and a settings panel for the
 router URL / key / model.
 
+#### Router panel
+
+A built-in **Router** panel (top bar → *Router*) manages your hermes-router without
+dropping to a terminal:
+
+- **Status** — live connection, container state, providers, available models, latency, and
+  **Start / Stop / Restart** (via `docker`).
+- **Logs** — tail `docker logs` for the router container.
+- **Config** — edit the router's `.env` / config file in place, then **Save** or **Save & Restart**.
+
+Point it at your container with the **Container name** / **Config file** fields (defaults:
+`hermes-router`; configurable via `FORGE_ROUTER_CONTAINER` / `FORGE_ROUTER_CONFIG`).
+
+![Router panel](docs/router-panel.png)
+
 Run it from source:
 
 ```bash

@@ -90,6 +90,12 @@ semantic indexer, a router health indicator, named sessions, and a settings pane
 point Iris Code at any **OpenAI-compatible** endpoint — built-in presets for OpenAI and
 OpenRouter, or a **Custom** base URL — each with its own key and model, with a Test button.
 
+**File explorer** (toggle with *Files*): opening a project reveals a VS Code-style tree on
+the left (noise dirs like `.git` / `node_modules` / `.venv` hidden). Double-click a file for
+a syntax-highlighted preview, with a **Send to Forge** button to hand it to the agent.
+
+![File explorer](docs/file-explorer.png)
+
 #### Router panel
 
 A built-in **Router** panel (top bar → *Router*) is a control center for your

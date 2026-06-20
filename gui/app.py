@@ -14,6 +14,7 @@ from PySide6.QtGui import QIcon, QTextOption
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QLabel, QPushButton, QPlainTextEdit, QComboBox, QFileDialog, QInputDialog,
+    QSplitter,
 )
 
 from forge.config import Config
@@ -22,6 +23,7 @@ from forge.memory.conversations import ConversationStore
 
 from .style import STYLESHEET, OK, ERR, TEXT_DIM, ACCENT
 from .chat_view import ChatView
+from .file_tree import FileTree, FilePreviewDialog
 from .worker import ChatWorker, IndexWorker, HealthWorker
 from .settings import SettingsDialog
 
@@ -92,7 +94,17 @@ class MainWindow(QMainWindow):
         root.addWidget(self._build_topbar())
 
         self._chat = ChatView()
-        root.addWidget(self._chat, 1)
+        self._file_tree = FileTree()
+        self._file_tree.file_activated.connect(self._on_file_activated)
+        self._file_tree.hide()
+
+        self._splitter = QSplitter(Qt.Horizontal)
+        self._splitter.addWidget(self._file_tree)
+        self._splitter.addWidget(self._chat)
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setSizes([260, 760])
+        root.addWidget(self._splitter, 1)
 
         root.addWidget(self._build_composer())
         self.setCentralWidget(central)
@@ -116,6 +128,12 @@ class MainWindow(QMainWindow):
         open_btn.setToolTip("Choose the active project directory")
         open_btn.clicked.connect(self._on_open_project)
         lay.addWidget(open_btn)
+
+        self._files_btn = QPushButton("Files")
+        self._files_btn.setCheckable(True)
+        self._files_btn.setToolTip("Toggle the project file explorer")
+        self._files_btn.clicked.connect(self._on_toggle_files)
+        lay.addWidget(self._files_btn)
 
         self._index_btn = QPushButton("Index")
         self._index_btn.setToolTip("Index the project for semantic code search")
@@ -242,6 +260,23 @@ class MainWindow(QMainWindow):
         self._update_project_label()
         self._chat.add_system_note(f"Active project set to {resolved}")
 
+    def _on_toggle_files(self, checked: bool) -> None:
+        if checked and not self._config.project_dir:
+            self._files_btn.setChecked(False)
+            self._chat.add_system_note("Open a project first to browse its files.")
+            return
+        self._file_tree.setVisible(checked)
+
+    def _on_file_activated(self, path: str) -> None:
+        dlg = FilePreviewDialog(path, self._config.project_dir, self)
+        dlg.send_to_forge.connect(self._on_send_file_to_forge)
+        dlg.exec()
+
+    def _on_send_file_to_forge(self, path: str) -> None:
+        rel = os.path.relpath(path, self._config.project_dir) if self._config.project_dir else path
+        self._composer.setPlainText(f"Take a look at `{rel}` and explain what it does.")
+        self._composer.setFocus()
+
     def _update_project_label(self) -> None:
         pd = self._config.project_dir
         if not pd:
@@ -257,6 +292,10 @@ class MainWindow(QMainWindow):
             self._index_btn.setText(f"Index ✓ {stats['chunk_count']}")
         else:
             self._index_btn.setText("Index")
+        # Reveal the file explorer rooted at the project (VS Code-style).
+        self._file_tree.set_root(pd)
+        self._file_tree.show()
+        self._files_btn.setChecked(True)
 
     def _on_index(self) -> None:
         pd = self._config.project_dir

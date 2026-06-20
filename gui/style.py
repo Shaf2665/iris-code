@@ -16,7 +16,9 @@ STYLESHEET = f"""
 QWidget {{
     background-color: {BG};
     color: {TEXT};
-    font-family: "Segoe UI", "Helvetica Neue", "Ubuntu", sans-serif;
+    /* Cross-OS system font stack: Windows / macOS / Linux, with fallbacks. */
+    font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", "Ubuntu",
+                 "Noto Sans", "Cantarell", sans-serif;
     font-size: 14px;
 }}
 QFrame#TopBar {{

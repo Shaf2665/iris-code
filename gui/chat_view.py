@@ -12,7 +12,20 @@ import html
 
 from PySide6.QtWidgets import QTextBrowser
 
-from .style import CHAT_CSS
+from .style import CHAT_CSS, ACCENT, TEXT_DIM, CYAN
+
+_EMPTY_HTML = f"""
+<div style="text-align:center; margin-top:120px; color:{TEXT_DIM};">
+  <div style="font-size:34px; color:{ACCENT}; font-weight:800;">&#10022; Iris Code</div>
+  <div style="font-size:15px; margin-top:10px;">Your personal coding agent, powered by hermes-router.</div>
+  <div style="font-size:13px; margin-top:22px; line-height:1.8;">
+    1. Open a project with <b style="color:{CYAN};">Open&hellip;</b> &nbsp;&middot;&nbsp;
+       2. <b style="color:{CYAN};">Index</b> it for code search &nbsp;&middot;&nbsp;
+       3. Ask Forge anything<br>
+    <span style="color:{TEXT_DIM};">e.g. &ldquo;run the tests and fix what fails&rdquo; &nbsp;or&nbsp; &ldquo;where is auth handled?&rdquo;</span>
+  </div>
+</div>
+"""
 
 try:
     import markdown as _md
@@ -105,6 +118,9 @@ class ChatView(QTextBrowser):
         return '<div class="turn">' + "".join(parts) + "</div>"
 
     def _render(self) -> None:
+        if not self._turns and self._streaming is None:
+            self.setHtml(CHAT_CSS + _EMPTY_HTML)
+            return
         body = [CHAT_CSS]
         for t in self._turns:
             body.append(self._turn_html(t["role"], t["text"], t["tools"]))

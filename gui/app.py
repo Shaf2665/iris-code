@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Iris Code — Forge")
         self.setWindowIcon(_app_icon())
         self.resize(940, 720)
+        self.setMinimumSize(720, 520)
         self._build_ui()
         self._store.save(self._conv_id, self._history)
 
@@ -138,6 +139,10 @@ class MainWindow(QMainWindow):
         self._status_dot.setStyleSheet(f"color:{TEXT_DIM}")
         self._status_dot.setToolTip("Router status")
         lay.addWidget(self._status_dot)
+        self._status_text = QLabel("checking…")
+        self._status_text.setStyleSheet(f"color:{TEXT_DIM}; font-size:12px;")
+        self._status_text.setToolTip("hermes-router connection")
+        lay.addWidget(self._status_text)
 
         settings_btn = QPushButton("⚙")
         settings_btn.setFixedWidth(36)
@@ -334,6 +339,12 @@ class MainWindow(QMainWindow):
         color = OK if ok else ERR
         self._status_dot.setStyleSheet(f"color:{color}")
         self._status_dot.setToolTip(f"Router: {detail}")
+        self._status_text.setText("Connected" if ok else "Offline")
+        self._status_text.setStyleSheet(f"color:{color if not ok else TEXT_DIM}; font-size:12px;")
+        self._status_text.setToolTip(
+            f"hermes-router at {self._config.router_url} — {detail}"
+            + ("" if ok else "\nStart your router, or change the URL in Settings (⚙).")
+        )
         self._health_worker = None
 
     # ── lifecycle ──────────────────────────────────────────────────────
@@ -353,7 +364,8 @@ class MainWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Iris Code")
-    app.setApplicationDisplayName("Iris Code")
+    # Note: deliberately NOT calling setApplicationDisplayName — on Windows Qt
+    # appends it to every window title, producing "Iris Code — Forge - Iris Code".
     app.setWindowIcon(_app_icon())
     app.setStyleSheet(STYLESHEET)
     try:

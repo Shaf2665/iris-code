@@ -1,10 +1,11 @@
 """
-File explorer pane (VS Code-style) + a read-only file preview.
+File explorer pane (VS Code-style).
 
 A QTreeView over a QFileSystemModel rooted at the active project, with a filter
-proxy that hides noise directories (.git, node_modules, .venv, …). Double-click a
-file to preview it (syntax-highlighted, read-only); from there you can hand it to
-Forge, which inserts a prompt referencing the file into the composer.
+proxy that hides noise directories (.git, node_modules, .venv, …), colored
+per-type file icons, a header (project name + refresh/collapse), and a context
+menu. Activating a file emits `file_activated`; the main window opens it in the
+editor.
 """
 from __future__ import annotations
 
@@ -17,62 +18,90 @@ from PySide6.QtGui import (
     QIcon, QPixmap, QPainter, QColor, QFont, QPainterPath, QDesktopServices,
 )
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTreeView, QDialog, QTextBrowser,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTreeView,
     QPushButton, QFileSystemModel, QFileIconProvider, QApplication, QMenu,
 )
 
 from forge.memory.project_index import _SKIP_DIRS
-from .style import ACCENT, TEXT_DIM, BG_ELEV, BORDER
-
-try:
-    from pygments import highlight as _pyg_highlight
-    from pygments.lexers import get_lexer_for_filename
-    from pygments.lexers.special import TextLexer
-    from pygments.formatters import HtmlFormatter
-
-    def _highlight(path: str, text: str) -> str:
-        try:
-            lexer = get_lexer_for_filename(path, text)
-        except Exception:
-            lexer = TextLexer()
-        return _pyg_highlight(text, lexer, HtmlFormatter(noclasses=True, style="monokai"))
-except Exception:  # pragma: no cover
-    import html as _html
-
-    def _highlight(path: str, text: str) -> str:
-        return "<pre>" + _html.escape(text) + "</pre>"
+from .style import ACCENT, TEXT_DIM
 
 
 # Per-language colors (GitHub-linguist-ish), keyed by extension without the dot.
 # Several extensions can share a swatch; the badge text is the extension itself.
 _EXT_COLOR = {
-    "py": "#3572A5", "pyw": "#3572A5", "ipynb": "#da5b0b",
+    # ── languages ──
+    "py": "#3572A5", "pyw": "#3572A5", "pyi": "#3572A5", "ipynb": "#da5b0b",
     "js": "#f1e05a", "mjs": "#f1e05a", "cjs": "#f1e05a",
     "ts": "#3178c6", "tsx": "#3178c6", "jsx": "#61dafb",
-    "json": "#cbcb41", "json5": "#cbcb41",
-    "yml": "#d4a72c", "yaml": "#d4a72c", "toml": "#9c6b30",
-    "md": "#519aba", "markdown": "#519aba", "rst": "#519aba", "txt": "#8b93a3",
-    "html": "#e34c26", "htm": "#e34c26", "xml": "#0060ac", "svg": "#ff9a00",
-    "css": "#2965f1", "scss": "#c6538c", "sass": "#c6538c", "less": "#1d365d",
-    "sh": "#89e051", "bash": "#89e051", "zsh": "#89e051", "ps1": "#012456",
     "rs": "#dea584", "go": "#00ADD8", "rb": "#701516", "php": "#4F5D95",
-    "java": "#b07219", "kt": "#A97BFF", "swift": "#F05138", "c": "#555555",
-    "h": "#555555", "hpp": "#555555", "cpp": "#f34b7d", "cc": "#f34b7d",
-    "cs": "#178600", "sql": "#e38c00", "vue": "#41b883", "lua": "#000080",
-    "dart": "#00B4AB", "r": "#198CE7", "scala": "#c22d40", "pl": "#0298c3",
-    "ini": "#6e6e6e", "cfg": "#6e6e6e", "conf": "#6e6e6e", "env": "#6e6e6e",
-    "lock": "#6e6e6e", "gitignore": "#6e6e6e", "dockerfile": "#384d54",
+    "java": "#b07219", "kt": "#A97BFF", "kts": "#A97BFF", "swift": "#F05138",
+    "c": "#555555", "h": "#555555", "hpp": "#555555", "hh": "#555555",
+    "cpp": "#f34b7d", "cc": "#f34b7d", "cxx": "#f34b7d", "cs": "#178600",
+    "lua": "#000080", "dart": "#00B4AB", "r": "#198CE7", "scala": "#c22d40",
+    "pl": "#0298c3", "pm": "#0298c3", "jl": "#a270ba", "ex": "#6e4a7e",
+    "exs": "#6e4a7e", "clj": "#db5855", "hs": "#5e5086", "erl": "#b83998",
+    "elm": "#60B5CC", "ml": "#dc9d00", "fs": "#b845fc", "groovy": "#4298b8",
+    "m": "#438eff", "mm": "#438eff", "asm": "#6E4C13", "vb": "#945db7",
+    # ── web ──
+    "html": "#e34c26", "htm": "#e34c26", "vue": "#41b883", "svelte": "#ff3e00",
+    "astro": "#ff5d01", "css": "#2965f1", "scss": "#c6538c", "sass": "#c6538c",
+    "less": "#1d365d", "styl": "#ff6347",
+    # ── data / config ──
+    "json": "#cbcb41", "json5": "#cbcb41", "yml": "#d4a72c", "yaml": "#d4a72c",
+    "toml": "#9c6b30", "xml": "#0060ac", "csv": "#0a7c2f", "tsv": "#0a7c2f",
+    "proto": "#0080a5", "graphql": "#e10098", "gql": "#e10098",
+    "ini": "#6e6e6e", "cfg": "#6e6e6e", "conf": "#6e6e6e", "env": "#d4a72c",
+    "properties": "#6e6e6e", "lock": "#6e6e6e",
+    # ── docs ──
+    "md": "#519aba", "markdown": "#519aba", "mdx": "#519aba", "rst": "#519aba",
+    "txt": "#8b93a3", "pdf": "#e0524c", "doc": "#2b579a", "docx": "#2b579a",
+    "rtf": "#8b93a3", "tex": "#3D6117",
+    # ── images / media ──
+    "png": "#a074c4", "jpg": "#a074c4", "jpeg": "#a074c4", "gif": "#a074c4",
+    "bmp": "#a074c4", "webp": "#a074c4", "ico": "#a074c4", "svg": "#ff9a00",
+    "mp4": "#d16ba5", "mov": "#d16ba5", "mp3": "#d16ba5", "wav": "#d16ba5",
+    "ttf": "#b07219", "otf": "#b07219", "woff": "#b07219", "woff2": "#b07219",
+    # ── archives ──
+    "zip": "#b9a44c", "tar": "#b9a44c", "gz": "#b9a44c", "bz2": "#b9a44c",
+    "xz": "#b9a44c", "7z": "#b9a44c", "rar": "#b9a44c",
+    # ── shells / build / ops ──
+    "sh": "#89e051", "bash": "#89e051", "zsh": "#89e051", "fish": "#89e051",
+    "ps1": "#012456", "psm1": "#012456", "bat": "#C1F12E", "cmd": "#C1F12E",
+    "make": "#427819", "cmake": "#064F8C", "gradle": "#02303a",
+    "dockerfile": "#384d54", "tf": "#7B42BC", "sql": "#e38c00", "db": "#6e6e6e",
+    "sqlite": "#6e6e6e", "gitignore": "#6e6e6e", "gitattributes": "#6e6e6e",
 }
 _DEFAULT_COLOR = "#8b93a3"
+
+# Special filenames (no useful extension) → (badge text, color).
+_NAME_BADGE = {
+    "dockerfile": ("DK", "#384d54"),
+    "makefile": ("MK", "#427819"),
+    "cmakelists.txt": ("CM", "#064F8C"),
+    "license": ("LI", "#d4b106"),
+    "license.md": ("LI", "#d4b106"),
+    "readme": ("RD", "#519aba"),
+    "readme.md": ("RD", "#519aba"),
+    ".gitignore": ("GI", "#6e6e6e"),
+    ".gitattributes": ("GA", "#6e6e6e"),
+    ".env": ("EN", "#d4a72c"),
+    ".dockerignore": ("DI", "#384d54"),
+    "package.json": ("NPM", "#cb3837"),
+    "package-lock.json": ("NPM", "#cb3837"),
+    "requirements.txt": ("PY", "#3572A5"),
+    "pyproject.toml": ("PY", "#3572A5"),
+    "cargo.toml": ("RS", "#dea584"),
+    "go.mod": ("GO", "#00ADD8"),
+}
 
 
 def _badge_text(info: QFileInfo) -> str:
     """Short uppercase label for a file's badge (extension, or special names)."""
     name = info.fileName().lower()
-    if name in ("dockerfile",):
-        return "DK"
+    if name in _NAME_BADGE:
+        return _NAME_BADGE[name][0]
     suffix = info.suffix().lower()
-    if not suffix:                       # e.g. ".gitignore", "LICENSE", "Makefile"
+    if not suffix:                       # e.g. "LICENSE", "Makefile", dotfiles
         if name.startswith("."):
             return name[1:3].upper() or "•"
         return name[:2].upper() or "•"
@@ -81,8 +110,8 @@ def _badge_text(info: QFileInfo) -> str:
 
 def _color_for(info: QFileInfo) -> str:
     name = info.fileName().lower()
-    if name == "dockerfile":
-        return _EXT_COLOR["dockerfile"]
+    if name in _NAME_BADGE:
+        return _NAME_BADGE[name][1]
     key = info.suffix().lower() or name.lstrip(".")
     return _EXT_COLOR.get(key, _DEFAULT_COLOR)
 
@@ -117,7 +146,13 @@ class _IconProvider(QFileIconProvider):
         return self._cache["<dir>"]
 
     def _file_icon(self, info: QFileInfo) -> QIcon:
-        key = info.fileName().lower() if not info.suffix() else info.suffix().lower()
+        name = info.fileName().lower()
+        # Special filenames get their own cache slot even when they have a suffix
+        # (e.g. package.json → NPM, not the generic JSON badge).
+        if name in _NAME_BADGE:
+            key = "name:" + name
+        else:
+            key = info.suffix().lower() or name
         if key not in self._cache:
             self._cache[key] = self._paint_badge(_badge_text(info), QColor(_color_for(info)))
         return self._cache[key]
@@ -178,6 +213,7 @@ class _SkipDirProxy(QSortFilterProxyModel):
 
 class FileTree(QWidget):
     file_activated = Signal(str)  # absolute path of an opened file
+    send_to_forge = Signal(str)   # absolute path the user wants Forge to look at
     index_folder = Signal(str)    # absolute path of a folder to (re)index
 
     def __init__(self, parent=None):
@@ -277,8 +313,8 @@ class FileTree(QWidget):
         if is_dir:
             menu.addAction("Re-index project", lambda: self.index_folder.emit(self._root_path))
         else:
-            menu.addAction("Open / Preview", lambda: self.file_activated.emit(path))
-            menu.addAction("Send to Forge", lambda: self.file_activated.emit(path))
+            menu.addAction("Open", lambda: self.file_activated.emit(path))
+            menu.addAction("Send to Forge", lambda: self.send_to_forge.emit(path))
         menu.addSeparator()
         menu.addAction("Reveal in file manager", lambda: self._reveal(path, is_dir))
         menu.addAction("Copy path", lambda: QApplication.clipboard().setText(path))
@@ -292,50 +328,3 @@ class FileTree(QWidget):
     def _copy_rel(self, path: str) -> None:
         rel = os.path.relpath(path, self._root_path) if self._root_path else path
         QApplication.clipboard().setText(rel)
-
-
-_MAX_PREVIEW = 400_000
-
-
-class FilePreviewDialog(QDialog):
-    """Read-only, syntax-highlighted preview with a 'Send to Forge' action."""
-    send_to_forge = Signal(str)  # path the user wants Forge to look at
-
-    def __init__(self, path: str, project_dir: str = "", parent=None):
-        super().__init__(parent)
-        self._path = path
-        rel = os.path.relpath(path, project_dir) if project_dir else path
-        self.setWindowTitle(f"Iris Code — {rel}")
-        self.setMinimumSize(760, 600)
-
-        view = QTextBrowser()
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                text = fh.read(_MAX_PREVIEW)
-        except Exception as e:  # noqa: BLE001
-            text = f"(could not read file: {e})"
-        view.setHtml(
-            f'<div style="font-family:\'Cascadia Code\',\'Consolas\',monospace; font-size:12px; '
-            f'background:{BG_ELEV};">{_highlight(path, text)}</div>'
-        )
-
-        title = QLabel(f"<b style='color:{ACCENT}'>{rel}</b>")
-        send_btn = QPushButton("Send to Forge")
-        send_btn.setObjectName("Send")
-        send_btn.clicked.connect(self._on_send)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-
-        top = QHBoxLayout()
-        top.addWidget(title)
-        top.addStretch(1)
-        top.addWidget(send_btn)
-        top.addWidget(close_btn)
-
-        lay = QVBoxLayout(self)
-        lay.addLayout(top)
-        lay.addWidget(view, 1)
-
-    def _on_send(self) -> None:
-        self.send_to_forge.emit(self._path)
-        self.accept()

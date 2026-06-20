@@ -28,6 +28,11 @@ _EMPTY_HTML = f"""
 </div>
 """
 
+def welcome_html() -> str:
+    """The branded empty-state, shared by the chat view and the editor area."""
+    return CHAT_CSS + _EMPTY_HTML
+
+
 try:
     import markdown as _md
 

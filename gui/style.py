@@ -116,6 +116,68 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 
 QDialog {{ background-color: {BG_ELEV}; }}
 QLabel.dim {{ color: {TEXT_DIM}; }}
+
+/* ── Activity bar (left edge, VS Code-style) ── */
+QToolBar#ActivityBar {{
+    background-color: #101216;
+    border: none;
+    border-right: 1px solid {BORDER};
+    padding: 6px 0;
+    spacing: 4px;
+}}
+QToolBar#ActivityBar QToolButton {{
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+    color: {TEXT_DIM};
+    padding: 10px 6px;
+    font-size: 11px;
+    min-width: 52px;
+}}
+QToolBar#ActivityBar QToolButton:hover {{ color: {TEXT}; }}
+QToolBar#ActivityBar QToolButton:checked {{
+    color: {ACCENT};
+    border-left: 2px solid {ACCENT};
+}}
+
+/* ── Dock widgets ── */
+QDockWidget {{
+    color: {TEXT_DIM};
+    titlebar-close-icon: none;
+    titlebar-normal-icon: none;
+}}
+QDockWidget::title {{
+    background-color: {BG_ELEV};
+    padding: 5px 8px;
+    border-bottom: 1px solid {BORDER};
+    font-size: 11px;
+    text-transform: uppercase;
+}}
+
+/* ── Editor tabs ── */
+QTabWidget::pane {{ border: none; background: {BG}; }}
+QTabBar {{ background: {BG_ELEV}; }}
+QTabBar::tab {{
+    background: {BG_ELEV};
+    color: {TEXT_DIM};
+    padding: 6px 14px;
+    border: none;
+    border-right: 1px solid {BORDER};
+}}
+QTabBar::tab:selected {{
+    background: {BG};
+    color: {TEXT};
+    border-top: 2px solid {ACCENT};
+}}
+QTabBar::tab:hover {{ color: {TEXT}; }}
+
+/* ── Editor + terminal ── */
+QPlainTextEdit#TerminalOut {{
+    background-color: #0e1013;
+    border: none;
+    padding: 4px 8px;
+    color: {TEXT};
+}}
 """
 
 # CSS injected into the QTextBrowser HTML document (chat transcript).
